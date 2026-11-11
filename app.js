@@ -147,35 +147,6 @@ async function lancerSynchro(bouton) {
 
 /* ------------------------------------------------------------------ graphiques */
 
-/** Score de 0 a 1 pour remplir l'anneau d'un indicateur. */
-function score(ind) {
-  if (ind.valeur == null) return 0;
-  const base = { vert: 0.88, orange: 0.58, rouge: 0.3, inconnu: 0.1 }[ind.statut] ?? 0.1;
-  let nuance = 0;
-  if (ind.normale) nuance = Math.max(-0.1, Math.min(0.12, (ind.sens * (ind.valeur - ind.normale)) / ind.normale));
-  return Math.max(0.05, Math.min(1, base + nuance));
-}
-
-function anneaux(rec) {
-  const taille = 148, centre = taille / 2, epaisseur = 13, ecart = 3;
-  let html = "";
-  INDICATEURS.forEach((def, i) => {
-    const r = centre - epaisseur / 2 - i * (epaisseur + ecart);
-    const tour = 2 * Math.PI * r;
-    const plein = score(rec[def.cle]);
-    html += `<circle class="fond" cx="${centre}" cy="${centre}" r="${r}" stroke="${def.couleur}" stroke-width="${epaisseur}"/>`;
-    html += `<circle class="arc" cx="${centre}" cy="${centre}" r="${r}" stroke="${def.couleur}" stroke-width="${epaisseur}"
-      stroke-dasharray="${tour}" stroke-dashoffset="${tour}" data-cible="${tour * (1 - plein)}"
-      transform="rotate(-90 ${centre} ${centre})"/>`;
-  });
-  const n = svg(html, { viewBox: `0 0 ${taille} ${taille}`, class: "anneaux", role: "img",
-    "aria-label": "Récupération : VFC, FC au repos, sommeil et Body Battery" });
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    n.querySelectorAll(".arc").forEach((a) => a.setAttribute("stroke-dashoffset", a.dataset.cible));
-  }));
-  return n;
-}
-
 function tendance(points, couleur, normale) {
   const vals = points.map((p) => p.valeur);
   const connus = vals.filter((v) => v != null);
@@ -197,29 +168,41 @@ function tendance(points, couleur, normale) {
     { viewBox: "0 0 84 34", class: "tendance", "aria-hidden": "true" });
 }
 
-function graphiqueCharge(points) {
-  const L = 340, H = 140, g = 26, bas = 18;
-  const vals = points.flatMap((p) => [p.aigue, p.chronique]);
-  const max = Math.max(...vals, 1) * 1.1;
-  const x = (i) => g + (i / (points.length - 1)) * (L - g);
-  const y = (v) => H - bas - (v / max) * (H - bas - 6);
-  const ligne = (cle) => points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p[cle]).toFixed(1)}`).join("");
-  const graduations = [0, Math.round(max / 2), Math.round(max)]
-    .map((v) => `<line x1="${g}" x2="${L}" y1="${y(v)}" y2="${y(v)}" stroke="#26262c"/><text x="0" y="${y(v) + 4}">${v}</text>`).join("");
-  const mois = [];
-  points.forEach((p, i) => {
-    if (p.date.slice(8) === "01") mois.push(`<text x="${x(i) - 8}" y="${H - 2}">${new Intl.DateTimeFormat("fr-FR", { month: "short" }).format(new Date(p.date))}</text>`);
+/** Zones de fraicheur (condition moins fatigue), du plus frais au plus charge. */
+const ZONES_FRAICHEUR = [
+  { min: 10, nom: "Frais", couleur: "#64d2ff", lecture: "Fatigue basse : tu as de la marge pour charger, ou tu es prêt pour une course." },
+  { min: -10, nom: "Équilibre", couleur: "#9a9aa3", lecture: "Charge et récupération équilibrées : tu entretiens ta condition." },
+  { min: -30, nom: "Progression", couleur: "#30d158", lecture: "Fatigue de travail : c'est la zone où la condition progresse." },
+  { min: -Infinity, nom: "Surcharge", couleur: "#ff453a", lecture: "Fatigue excessive : risque de blessure, priorité à la récupération." },
+];
+const zoneFraicheur = (v) => ZONES_FRAICHEUR.find((z) => v >= z.min);
+
+function graphiqueFraicheur(points) {
+  const jours = points.slice(-56);
+  const L = 340, H = 170, g = 84, bas = 18, haut = 6;
+  const vals = jours.map((p) => p.forme);
+  const vMax = Math.max(25, ...vals) + 3, vMin = Math.min(-40, ...vals) - 3;
+  const x = (i) => g + (i / (jours.length - 1)) * (L - g - 4);
+  const y = (v) => haut + ((vMax - v) / (vMax - vMin)) * (H - bas - haut);
+  let html = "";
+  // bandes de zones
+  const bornes = [vMax, 10, -10, -30, vMin];
+  ZONES_FRAICHEUR.forEach((z, i) => {
+    const y1 = y(bornes[i]), y2 = y(bornes[i + 1]);
+    html += `<rect x="${g}" y="${y1}" width="${L - g}" height="${y2 - y1}" fill="${z.couleur}" opacity="0.08"/>`;
+    html += `<text x="0" y="${(y1 + y2) / 2 + 4}" style="fill:${z.couleur}">${z.nom}</text>`;
   });
-  const aire = `${ligne("chronique")}L${x(points.length - 1)} ${y(0)}L${x(0)} ${y(0)}Z`;
-  return svg(`
-    <defs><linearGradient id="degrade-forme" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2ee6a6" stop-opacity="0.35"/><stop offset="1" stop-color="#2ee6a6" stop-opacity="0"/>
-    </linearGradient></defs>
-    ${graduations}${mois.join("")}
-    <path d="${aire}" fill="url(#degrade-forme)"/>
-    <path d="${ligne("chronique")}" fill="none" stroke="#2ee6a6" stroke-width="2.4" stroke-linejoin="round"/>
-    <path d="${ligne("aigue")}" fill="none" stroke="#ff9f1c" stroke-width="1.6" stroke-linejoin="round" opacity="0.9"/>`,
-  { viewBox: `0 0 ${L} ${H}`, class: "graphique", role: "img", "aria-label": "Condition physique et fatigue sur 4 mois" });
+  html += `<line x1="${g}" x2="${L}" y1="${y(0)}" y2="${y(0)}" stroke="#3a3a42" stroke-dasharray="2 3"/>`;
+  // dates : un repere par semaine (lundis)
+  jours.forEach((p, i) => {
+    const d = new Date(p.date);
+    if (d.getDay() === 1 && i < jours.length - 3) html += `<text x="${x(i)}" y="${H - 2}" text-anchor="middle">${d.getDate()}/${d.getMonth() + 1}</text>`;
+  });
+  const chemin = jours.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p.forme).toFixed(1)}`).join("");
+  html += `<path d="${chemin}" fill="none" stroke="#f5f5f7" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const dernier = jours[jours.length - 1];
+  html += `<circle cx="${x(jours.length - 1)}" cy="${y(dernier.forme)}" r="5" fill="${zoneFraicheur(dernier.forme).couleur}" stroke="#000" stroke-width="2"/>`;
+  return svg(html, { viewBox: `0 0 ${L} ${H}`, class: "graphique", role: "img", "aria-label": "Fraîcheur sur 8 semaines" });
 }
 
 function graphiqueSemaines(semaines) {
@@ -263,17 +246,7 @@ function vueAujourdhui() {
     sug.consigne ? el("p", { class: "consigne" }, sug.consigne) : null,
     sug.raisons.length ? el("ul", { class: "raisons" }, sug.raisons.map((r) => el("li", {}, r))) : null));
 
-  frag.push(el("section", { class: "forme", "aria-label": "Récupération de la nuit" },
-    anneaux(rec),
-    el("ul", { class: "legende-anneaux" },
-      INDICATEURS.map((def) => {
-        const ind = rec[def.cle];
-        return el("li", { class: ind.statut },
-          el("i", { style: `background:${def.couleur}`, "aria-hidden": "true" }),
-          el("span", {}, ind.nom),
-          el("b", {}, { vert: "Bon", orange: "Moyen", rouge: "Bas", inconnu: "–" }[ind.statut]));
-      }))));
-
+  frag.push(el("h2", {}, "Récupération de la nuit"));
   frag.push(el("section", { class: "indicateurs", "aria-label": "Récupération de la nuit" },
     INDICATEURS.map((def) => {
       const ind = rec[def.cle];
@@ -288,23 +261,22 @@ function vueAujourdhui() {
     })));
 
   const ch = d.charge;
-  if (ch && ch.points && ch.points.length > 1) {
+  if (ch && ch.points && ch.points.length > 28) {
     const fraicheur = ch.forme ?? 0;
-    const lecture = fraicheur > 10 ? "Fatigue basse par rapport à ta condition : tu as de la marge pour charger."
-      : fraicheur < -25 ? "Fatigue accumulée importante : priorité à la récupération."
-      : fraicheur < -10 ? "Fatigue d'entraînement normale en période de travail."
-      : "Charge et récupération équilibrées.";
+    const zone = zoneFraicheur(fraicheur);
+    const ilYa28 = ch.points[ch.points.length - 29].chronique;
+    const evolution = Math.round(ch.chronique - ilYa28);
     frag.push(el("h2", {}, "Forme et fatigue"));
     frag.push(el("section", { class: "carte" },
       el("div", { class: "carte-tete" },
         el("div", {},
-          el("div", { class: "grand-chiffre" }, `${fraicheur > 0 ? "+" : ""}${Math.round(fraicheur)}`),
-          el("div", { class: "legende" }, "Fraîcheur (condition moins fatigue)")),
-        el("div", { class: "legende" },
-          el("span", {}, el("i", { style: "background:#2ee6a6" }), "Condition, 6 sem."),
-          el("span", {}, el("i", { style: "background:#ff9f1c" }), "Fatigue, 7 j"))),
-      graphiqueCharge(ch.points),
-      el("p", { class: "note" }, lecture)));
+          el("div", { class: "grand-chiffre", style: `color:${zone.couleur}` }, zone.nom),
+          el("div", { class: "legende" }, `Fraîcheur ${fraicheur > 0 ? "+" : ""}${Math.round(fraicheur)}`)),
+        el("div", { class: "condition" },
+          el("div", { class: "condition-chiffre" }, `${Math.round(ch.chronique)}`),
+          el("div", { class: "legende" }, `Condition, ${evolution >= 0 ? "+" : ""}${evolution} en 4 sem.`))),
+      graphiqueFraicheur(ch.points),
+      el("p", { class: "note" }, zone.lecture)));
   }
 
   if (d.semaines && d.semaines.length) {
