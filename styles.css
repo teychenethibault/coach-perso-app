@@ -74,15 +74,33 @@ h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 32px 0 
 .anneaux .arc { transition: stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1); }
 @media (prefers-reduced-motion: reduce) { .anneaux .arc { transition: none; } }
 
-.suggestion-titre {
-  font-size: 26px; line-height: 1.12; font-weight: 800; letter-spacing: -0.02em;
-  margin: 0 0 8px;
+/* carte de recommandation : la couleur dit l'intensite du jour */
+.recommandation {
+  --ton: var(--bb);
+  position: relative; overflow: hidden;
+  border-radius: 24px; padding: 18px 18px 18px 22px; margin-bottom: 24px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--ton) 26%, #151518), #151518 70%);
 }
-.suggestion-titre.repos { color: var(--rouge); }
-.suggestion-titre.facile { color: var(--bb); }
-.suggestion-titre.qualite { color: var(--vert); }
-.raisons { margin: 0; padding: 0; list-style: none; color: var(--texte-2); font-size: 14px; }
+.recommandation::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--ton);
+}
+.recommandation.repos { --ton: var(--rouge); }
+.recommandation.facile { --ton: var(--bb); }
+.recommandation.qualite { --ton: var(--vert); }
+.recommandation-libelle { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--ton); }
+.suggestion-titre {
+  font-size: 30px; line-height: 1.08; font-weight: 800; letter-spacing: -0.02em; margin: 0;
+}
+.consigne { margin: 10px 0 0; font-size: 16px; line-height: 1.4; }
+.raisons { margin: 10px 0 0; padding: 0; list-style: none; color: var(--texte-2); font-size: 14px; }
 .raisons li + li { margin-top: 4px; }
+
+/* legende des anneaux */
+.legende-anneaux { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 14px; }
+.legende-anneaux li { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 8px; }
+.legende-anneaux i { width: 12px; height: 12px; border-radius: 50%; }
+.legende-anneaux span { color: var(--texte-2); }
+.legende-anneaux b { font-weight: 700; color: var(--statut); }
 
 /* ---------------------------------------------------------- indicateurs de recuperation */
 .indicateurs { margin-top: 24px; background: var(--surface); border-radius: var(--rayon); }

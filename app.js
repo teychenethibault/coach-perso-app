@@ -257,11 +257,22 @@ function vueAujourdhui() {
   const d = donnees, rec = d.recuperation, sug = d.suggestion;
   const frag = [enTete(), el("h1", {}, "Aujourd'hui")];
 
-  frag.push(el("section", { class: "forme", "aria-label": "Suggestion du jour" },
+  frag.push(el("section", { class: `recommandation ${sug.niveau}`, "aria-label": "Recommandation du jour" },
+    el("p", { class: "recommandation-libelle" }, "Recommandation du jour"),
+    el("p", { class: "suggestion-titre" }, sug.titre),
+    sug.consigne ? el("p", { class: "consigne" }, sug.consigne) : null,
+    sug.raisons.length ? el("ul", { class: "raisons" }, sug.raisons.map((r) => el("li", {}, r))) : null));
+
+  frag.push(el("section", { class: "forme", "aria-label": "Récupération de la nuit" },
     anneaux(rec),
-    el("div", {},
-      el("p", { class: `suggestion-titre ${sug.niveau}` }, sug.titre),
-      el("ul", { class: "raisons" }, sug.raisons.map((r) => el("li", {}, r))))));
+    el("ul", { class: "legende-anneaux" },
+      INDICATEURS.map((def) => {
+        const ind = rec[def.cle];
+        return el("li", { class: ind.statut },
+          el("i", { style: `background:${def.couleur}`, "aria-hidden": "true" }),
+          el("span", {}, ind.nom),
+          el("b", {}, { vert: "Bon", orange: "Moyen", rouge: "Bas", inconnu: "–" }[ind.statut]));
+      }))));
 
   frag.push(el("section", { class: "indicateurs", "aria-label": "Récupération de la nuit" },
     INDICATEURS.map((def) => {
