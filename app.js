@@ -10,12 +10,6 @@ const FICHIER_JOUR = "data/app/aujourdhui.json";
 const WORKFLOW_SYNCHRO = "sync-garmin.yml";
 const CLE_JETON = "coach-perso-jeton";
 
-const INDICATEURS = [
-  { cle: "vfc", couleur: "var(--vfc)", format: (v) => Math.round(v), unite: "ms" },
-  { cle: "fc_repos", couleur: "var(--fc)", format: (v) => Math.round(v), unite: "bpm" },
-  { cle: "sommeil", couleur: "var(--sommeil)", format: heuresMinutes, unite: "" },
-  { cle: "body_battery", couleur: "var(--bb)", format: (v) => Math.round(v), unite: "" },
-];
 
 const ecran = document.getElementById("ecran");
 let donnees = null;
@@ -50,10 +44,6 @@ function svg(html, attrs = {}) {
   return n;
 }
 
-function heuresMinutes(h) {
-  const t = Math.round(h * 60);
-  return `${Math.floor(t / 60)} h ${String(t % 60).padStart(2, "0")}`;
-}
 
 function chrono(s) {
   s = Math.round(s);
@@ -147,62 +137,114 @@ async function lancerSynchro(bouton) {
 
 /* ------------------------------------------------------------------ graphiques */
 
-function tendance(points, couleur, normale) {
-  const vals = points.map((p) => p.valeur);
-  const connus = vals.filter((v) => v != null);
-  if (connus.length < 2) return svg("", { viewBox: "0 0 84 34", class: "tendance" });
-  const min = Math.min(...connus, normale ?? Infinity), max = Math.max(...connus, normale ?? -Infinity);
-  const y = (v) => 30 - ((v - min) / (max - min || 1)) * 26;
-  const x = (i) => 2 + (i / (vals.length - 1)) * 80;
-  let d = "", enCours = false;
-  vals.forEach((v, i) => {
-    if (v == null) { enCours = false; return; }
-    d += `${enCours ? "L" : "M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`;
-    enCours = true;
-  });
-  const dernier = vals.length - 1;
-  const ligneNormale = normale != null
-    ? `<line x1="2" x2="82" y1="${y(normale)}" y2="${y(normale)}" stroke="#3a3a42" stroke-dasharray="2 3"/>` : "";
-  const point = vals[dernier] != null ? `<circle cx="${x(dernier)}" cy="${y(vals[dernier])}" r="3" fill="${couleur}"/>` : "";
-  return svg(`${ligneNormale}<path d="${d}" fill="none" stroke="${couleur}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${point}`,
-    { viewBox: "0 0 84 34", class: "tendance", "aria-hidden": "true" });
+/* ------------------------------------------------------------------ tendances */
+
+const TENDANCE_COULEUR = { hausse: "#30d158", stable: "#0a84ff", baisse: "#ff453a" };
+const TENDANCE_TEXTE = { 3: "Forte amélioration", 2: "Amélioration", 1: "Légère amélioration", 0: "Stable",
+  "-1": "Léger recul", "-2": "Recul", "-3": "Fort recul" };
+
+/** Fleches : 1 a 3 chevrons verts vers le haut, une fleche bleue horizontale, 1 a 3 chevrons rouges vers le bas. */
+function fleches(niveau) {
+  if (niveau == null) return svg(`<text x="22" y="26" text-anchor="middle" style="fill:#636369;font-size:18px">–</text>`, { viewBox: "0 0 44 36", class: "fleches", "aria-hidden": "true" });
+  if (niveau === 0) {
+    return svg(`<path d="M8 18H34M26 10l8 8-8 8" fill="none" stroke="${TENDANCE_COULEUR.stable}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+      { viewBox: "0 0 44 36", class: "fleches", "aria-hidden": "true" });
+  }
+  const n = Math.abs(niveau), haut = niveau > 0, couleur = haut ? TENDANCE_COULEUR.hausse : TENDANCE_COULEUR.baisse;
+  const pas = 9, total = (n - 1) * pas, y0 = 18 - total / 2;
+  let html = "";
+  for (let i = 0; i < n; i++) {
+    const y = y0 + i * pas;
+    html += haut
+      ? `<path d="M11 ${y + 5}l11-9 11 9" fill="none" stroke="${couleur}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>`
+      : `<path d="M11 ${y - 5}l11 9 11-9" fill="none" stroke="${couleur}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+  }
+  return svg(html, { viewBox: "0 0 44 36", class: "fleches", "aria-hidden": "true" });
 }
 
-/** Zones de fraicheur (condition moins fatigue), du plus frais au plus charge. */
-const ZONES_FRAICHEUR = [
-  { min: 10, nom: "Frais", couleur: "#64d2ff", lecture: "Fatigue basse : tu as de la marge pour charger, ou tu es prêt pour une course." },
-  { min: -10, nom: "Équilibre", couleur: "#9a9aa3", lecture: "Charge et récupération équilibrées : tu entretiens ta condition." },
-  { min: -30, nom: "Progression", couleur: "#30d158", lecture: "Fatigue de travail : c'est la zone où la condition progresse." },
-  { min: -Infinity, nom: "Surcharge", couleur: "#ff453a", lecture: "Fatigue excessive : risque de blessure, priorité à la récupération." },
-];
-const zoneFraicheur = (v) => ZONES_FRAICHEUR.find((z) => v >= z.min);
+function caseTendance(t) {
+  const sens = t.niveau == null ? "" : t.niveau > 0 ? "hausse" : t.niveau < 0 ? "baisse" : "stable";
+  let ecart = "";
+  if (t.ecart != null) {
+    const v = t.unite === "h" ? `${Math.round(Math.abs(t.ecart) * 60)} min` : `${Math.round(Math.abs(t.ecart))}${t.unite ? " " + t.unite : ""}`;
+    ecart = Math.round(Math.abs(t.ecart) * (t.unite === "h" ? 60 : 1)) === 0 ? "=" : `${t.ecart > 0 ? "+" : "−"}${v}`;
+  }
+  return el("div", { class: `case-tendance ${sens}`, role: "img",
+    "aria-label": `${t.nom} : ${t.niveau == null ? "pas assez de données" : TENDANCE_TEXTE[t.niveau]}` },
+    el("div", { class: "case-nom" }, t.nom),
+    fleches(t.niveau),
+    el("div", { class: "case-ecart" }, ecart));
+}
 
-function graphiqueFraicheur(points) {
-  const jours = points.slice(-56);
-  const L = 340, H = 170, g = 84, bas = 18, haut = 6;
-  const vals = jours.map((p) => p.forme);
-  const vMax = Math.max(25, ...vals) + 3, vMin = Math.min(-40, ...vals) - 3;
-  const x = (i) => g + (i / (jours.length - 1)) * (L - g - 4);
-  const y = (v) => haut + ((vMax - v) / (vMax - vMin)) * (H - bas - haut);
+/* ------------------------------------------------------------------ progression */
+
+function courbe(points, cle, couleur, inverse, formatAxe) {
+  const L = 340, H = 120, g = 44, bas = 18, haut = 8;
+  const valides = points.map((p, i) => ({ i, v: p[cle], date: p.date })).filter((p) => p.v != null);
+  if (valides.length < 2) return null;
+  const vals = valides.map((p) => p.v);
+  let min = Math.min(...vals), max = Math.max(...vals);
+  const marge = (max - min) * 0.15 || 1;
+  min -= marge; max += marge;
+  const x = (i) => g + (i / (points.length - 1)) * (L - g - 6);
+  const y = (v) => {
+    const r = (v - min) / (max - min);
+    return haut + (inverse ? r : 1 - r) * (H - bas - haut);
+  };
   let html = "";
-  // bandes de zones
-  const bornes = [vMax, 10, -10, -30, vMin];
-  ZONES_FRAICHEUR.forEach((z, i) => {
-    const y1 = y(bornes[i]), y2 = y(bornes[i + 1]);
-    html += `<rect x="${g}" y="${y1}" width="${L - g}" height="${y2 - y1}" fill="${z.couleur}" opacity="0.08"/>`;
-    html += `<text x="0" y="${(y1 + y2) / 2 + 4}" style="fill:${z.couleur}">${z.nom}</text>`;
+  [inverse ? max - marge : min + marge, inverse ? min + marge : max - marge].forEach((v) => {
+    html += `<line x1="${g}" x2="${L}" y1="${y(v)}" y2="${y(v)}" stroke="#26262c"/><text x="0" y="${y(v) + 4}">${formatAxe(v)}</text>`;
   });
-  html += `<line x1="${g}" x2="${L}" y1="${y(0)}" y2="${y(0)}" stroke="#3a3a42" stroke-dasharray="2 3"/>`;
-  // dates : un repere par semaine (lundis)
-  jours.forEach((p, i) => {
+  points.forEach((p, i) => {
     const d = new Date(p.date);
-    if (d.getDay() === 1 && i < jours.length - 3) html += `<text x="${x(i)}" y="${H - 2}" text-anchor="middle">${d.getDate()}/${d.getMonth() + 1}</text>`;
+    if (i % 4 === 1) html += `<text x="${x(i)}" y="${H - 2}" text-anchor="middle">${d.getDate()}/${d.getMonth() + 1}</text>`;
   });
-  const chemin = jours.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p.forme).toFixed(1)}`).join("");
-  html += `<path d="${chemin}" fill="none" stroke="#f5f5f7" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
-  const dernier = jours[jours.length - 1];
-  html += `<circle cx="${x(jours.length - 1)}" cy="${y(dernier.forme)}" r="5" fill="${zoneFraicheur(dernier.forme).couleur}" stroke="#000" stroke-width="2"/>`;
-  return svg(html, { viewBox: `0 0 ${L} ${H}`, class: "graphique", role: "img", "aria-label": "Fraîcheur sur 8 semaines" });
+  const chemin = valides.map((p, k) => `${k ? "L" : "M"}${x(p.i).toFixed(1)} ${y(p.v).toFixed(1)}`).join("");
+  const aire = `${chemin}L${x(valides[valides.length - 1].i)} ${H - bas}L${x(valides[0].i)} ${H - bas}Z`;
+  const id = `degrade-${cle}`;
+  html = `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${couleur}" stop-opacity="0.3"/><stop offset="1" stop-color="${couleur}" stop-opacity="0"/></linearGradient></defs>`
+    + html + `<path d="${aire}" fill="url(#${id})"/>`
+    + `<path d="${chemin}" fill="none" stroke="${couleur}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const dernier = valides[valides.length - 1];
+  html += `<circle cx="${x(dernier.i)}" cy="${y(dernier.v)}" r="4.5" fill="${couleur}" stroke="#000" stroke-width="2"/>`;
+  return svg(html, { viewBox: `0 0 ${L} ${H}`, class: "graphique", "aria-hidden": "true" });
+}
+
+function evolution(points, cle, semaines) {
+  const valides = points.filter((p) => p[cle] != null);
+  if (valides.length < 2) return null;
+  const actuel = valides[valides.length - 1][cle];
+  const ancien = points.slice(-semaines - 1).find((p) => p[cle] != null);
+  return ancien ? { actuel, delta: actuel - ancien[cle] } : null;
+}
+
+function blocProgression(points) {
+  const cond = evolution(points, "condition", 12);
+  const chr = evolution(points, "chrono_10km_s", 12);
+  const signe = (v) => (v > 0 ? "+" : v < 0 ? "−" : "±");
+  const elements = [];
+  if (cond) {
+    const bien = cond.delta >= 0;
+    elements.push(el("div", { class: "progression-tete" },
+      el("div", {},
+        el("div", { class: "legende" }, "Condition physique"),
+        el("div", { class: "grand-chiffre" }, Math.round(cond.actuel))),
+      el("div", { class: `progression-delta ${bien ? "bien" : "mal"}` },
+        `${signe(cond.delta)}${Math.abs(Math.round(cond.delta))} en 3 mois`)));
+    elements.push(courbe(points, "condition", "#2ee6a6", false, (v) => Math.round(v)));
+  }
+  if (chr) {
+    const bien = chr.delta <= 0; // un chrono qui baisse est un progres
+    elements.push(el("div", { class: "progression-tete separe" },
+      el("div", {},
+        el("div", { class: "legende" }, "10 km estimé"),
+        el("div", { class: "grand-chiffre" }, chrono(chr.actuel))),
+      el("div", { class: `progression-delta ${bien ? "bien" : "mal"}` },
+        `${bien ? "−" : "+"}${chrono(Math.abs(chr.delta))} en 3 mois`)));
+    elements.push(courbe(points, "chrono_10km_s", "#ff9f1c", true, (v) => chrono(v)));
+  }
+  elements.push(el("p", { class: "note" }, "Sur 6 mois. Courbe du chrono : plus elle monte, plus tu vas vite."));
+  return el("section", { class: "carte" }, elements);
 }
 
 function graphiqueSemaines(semaines) {
@@ -246,37 +288,20 @@ function vueAujourdhui() {
     sug.consigne ? el("p", { class: "consigne" }, sug.consigne) : null,
     sug.raisons.length ? el("ul", { class: "raisons" }, sug.raisons.map((r) => el("li", {}, r))) : null));
 
-  frag.push(el("h2", {}, "Récupération de la nuit"));
-  frag.push(el("section", { class: "indicateurs", "aria-label": "Récupération de la nuit" },
-    INDICATEURS.map((def) => {
-      const ind = rec[def.cle];
-      const normale = ind.normale != null ? `Normale ${def.format(ind.normale)}${def.unite ? " " + def.unite : ""}` : "Normale en cours de calcul";
-      const extra = def.cle === "sommeil" && ind.score != null ? `, score ${ind.score}` : "";
-      return el("div", { class: `indicateur ${ind.statut}` },
-        el("div", {},
-          el("div", { class: "nom" }, el("span", { class: "pastille", "aria-hidden": "true" }), ind.nom),
-          el("div", { class: "normale" }, normale + extra)),
-        el("div", { class: "valeur" }, ind.valeur != null ? def.format(ind.valeur) : "–", def.unite ? el("small", {}, def.unite) : null),
-        tendance(ind.quatorze_jours, def.couleur, ind.normale));
-    })));
+  if (d.diagnostic && d.diagnostic.length) {
+    frag.push(el("h2", {}, "État de forme"));
+    frag.push(el("section", { class: "carte diagnostic" }, d.diagnostic.map((p) => el("p", {}, p))));
+  }
 
-  const ch = d.charge;
-  if (ch && ch.points && ch.points.length > 28) {
-    const fraicheur = ch.forme ?? 0;
-    const zone = zoneFraicheur(fraicheur);
-    const ilYa28 = ch.points[ch.points.length - 29].chronique;
-    const evolution = Math.round(ch.chronique - ilYa28);
-    frag.push(el("h2", {}, "Forme et fatigue"));
-    frag.push(el("section", { class: "carte" },
-      el("div", { class: "carte-tete" },
-        el("div", {},
-          el("div", { class: "grand-chiffre", style: `color:${zone.couleur}` }, zone.nom),
-          el("div", { class: "legende" }, `Fraîcheur ${fraicheur > 0 ? "+" : ""}${Math.round(fraicheur)}`)),
-        el("div", { class: "condition" },
-          el("div", { class: "condition-chiffre" }, `${Math.round(ch.chronique)}`),
-          el("div", { class: "legende" }, `Condition, ${evolution >= 0 ? "+" : ""}${evolution} en 4 sem.`))),
-      graphiqueFraicheur(ch.points),
-      el("p", { class: "note" }, zone.lecture)));
+  if (d.tendances) {
+    frag.push(el("section", { class: "tendances", "aria-label": "Tendances de récupération sur 7 jours" },
+      ["vfc", "fc_repos", "sommeil", "body_battery"].map((cle) => caseTendance(d.tendances[cle]))));
+    frag.push(el("p", { class: "note" }, "Moyenne des 7 derniers jours comparée à ta normale du mois précédent."));
+  }
+
+  if (d.progression && d.progression.length > 4) {
+    frag.push(el("h2", {}, "Progression"));
+    frag.push(blocProgression(d.progression));
   }
 
   if (d.semaines && d.semaines.length) {
@@ -298,7 +323,7 @@ function vueAujourdhui() {
         el("div", { class: "distance" }, dist),
         el("div", { class: "temps" }, chrono(s))))));
     frag.push(el("p", { class: "note" },
-      `Calculés depuis ta meilleure portion de ${e.reference.distance_m / 1000} km (${chrono(e.reference.temps_s)}) des 90 derniers jours.`));
+      `Calculés depuis ta meilleure portion de ${e.reference.distance_m / 1000} km (${chrono(e.reference.temps_s)}) des 6 dernières semaines.`));
   }
 
   const a = d.derniere_activite;
