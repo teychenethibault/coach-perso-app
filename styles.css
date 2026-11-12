@@ -418,17 +418,43 @@ body.feuille-ouverte { overflow: hidden; }
 .passe { margin-top: 10px; }
 
 /* ---------------------------------------------------------- defis et trophees */
-.defis { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.defi { background: var(--surface); border-radius: var(--rayon); padding: 14px 16px; }
-.defi-tete { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left; }
-.defi-titre { font-size: 17px; font-weight: 700; line-height: 1.25; }
-.defi-delai { flex: none; font-size: 13px; color: var(--texte-2); font-variant-numeric: tabular-nums; }
-.defi-jauge { margin: 10px 0 8px; }
+.semaine-defis { margin-top: 10px; }
+.sd-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.sd-dates { margin: 2px 0 0; font-size: 13px; color: var(--texte-2); }
+.sd-compte { margin: 0; font-family: var(--chiffres); font-size: 17px; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.sd-compte b { font-size: 34px; color: var(--texte); }
+.defis { list-style: none; margin: 0; padding: 0; }
+.defi { padding: 12px 0; }
+.defi + .defi { border-top: 1px solid var(--trait); }
+.defi-tete { width: 100%; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 10px; text-align: left; }
+.defi-coche {
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--defi);
+  display: grid; place-items: center; font-size: 13px; font-weight: 800; color: #000;
+}
+.defi.reussi .defi-coche { background: var(--defi); }
+.defi-titre { font-size: 16px; font-weight: 700; line-height: 1.25; }
+.defi.reussi .defi-titre { color: var(--texte-2); }
+.defi-valeur { font-family: var(--chiffres); font-size: 14px; font-weight: 700; color: var(--texte-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.defi.reussi .defi-valeur { color: var(--defi); }
+.defi-jauge { margin: 9px 0 0 34px; height: 6px; }
 .defi-jauge span { transition: width 0.8s ease; }
-.defi-ou { margin: 0; font-size: 13px; color: var(--texte-2); }
-.defi-description { display: none; margin: 10px 0 0; font-size: 14px; line-height: 1.45; }
+.defi-description { display: none; margin: 10px 0 0 34px; font-size: 14px; line-height: 1.45; color: var(--texte-2); }
 .defi.ouvert .defi-description { display: block; }
-.defi-echeance { color: var(--texte-2); }
+.defi-echeance { color: var(--texte); }
+.serie { margin-top: 10px; }
+.serie-tete { display: flex; align-items: center; gap: 14px; }
+.serie-chiffre { font-family: var(--chiffres); font-size: 44px; font-weight: 800; line-height: 1; color: #ffd60a; min-width: 32px; text-align: center; }
+.serie-texte { display: flex; flex-direction: column; font-size: 13px; color: var(--texte-2); }
+.serie-texte b { font-size: 16px; color: var(--texte); }
+.semaines-passees { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.semaines-passees li { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; border-radius: 10px; }
+.semaines-passees li.parfaite { background: rgba(255, 214, 10, 0.14); }
+.points-semaine { display: flex; gap: 3px; }
+.points-semaine i { width: 7px; height: 7px; border-radius: 50%; background: var(--surface-2); }
+.points-semaine i.plein { background: var(--texte-2); }
+.semaines-passees li.parfaite i.plein { background: #ffd60a; }
+.semaine-date { font-size: 10px; color: var(--texte-3); white-space: nowrap; }
+.medaille.or { color: #ffd60a; }
 .trophees { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .trophees li > a, .trophees li > div {
   display: flex; flex-direction: column; align-items: flex-start; gap: 4px; height: 100%;

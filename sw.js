@@ -1,7 +1,7 @@
 // Service worker : garde l'appli disponible hors connexion.
 // Les donnees personnelles ne sont jamais mises en cache ici : elles viennent
 // de l'API GitHub a chaque ouverture.
-const VERSION = "coach-v13";
+const VERSION = "coach-v14";
 const COQUILLE = ["./", "index.html", "styles.css", "app.js", "diagnostic.js", "plan.js", "objectif.js", "coach.js", "manifest.webmanifest", "icon-192.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
