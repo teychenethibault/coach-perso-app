@@ -33,7 +33,7 @@ function el(balise, attrs = {}, ...enfants) {
     else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
     else n.setAttribute(k, v);
   }
-  for (const e of enfants.flat()) if (e != null && e !== false) n.append(e.nodeType ? e : String(e));
+  for (const e of enfants.flat(Infinity)) if (e != null && e !== false) n.append(e.nodeType ? e : String(e));
   return n;
 }
 
@@ -79,6 +79,27 @@ function toast(message) {
   toast.minuteur = setTimeout(() => { t.hidden = true; }, 3500);
 }
 
+/** Feuille plein ecran qui monte du bas (formulaires, chat). Renvoie { fermer, corps }. */
+function feuille(titre, construire, { classe = "" } = {}) {
+  const fond = el("div", { class: `feuille-fond ${classe}` });
+  const corps = el("div", { class: "feuille-corps" });
+  const fermer = () => { fond.classList.add("sortie"); document.body.classList.remove("feuille-ouverte"); setTimeout(() => fond.remove(), 220); };
+  fond.append(el("section", { class: "feuille", role: "dialog", "aria-modal": "true", "aria-label": titre },
+    el("header", { class: "feuille-tete" },
+      el("h2", {}, titre),
+      el("button", { class: "feuille-fermer", "aria-label": "Fermer", onclick: fermer }, "Fermer")),
+    corps));
+  fond.addEventListener("click", (e) => { if (e.target === fond) fermer(); });
+  document.body.append(fond);
+  document.body.classList.add("feuille-ouverte");
+  construire(corps, fermer);
+  return { fermer, corps };
+}
+
+const enMinutes = (s) => `${Math.floor(s / 60)}'${String(Math.round(s % 60)).padStart(2, "0")}`;
+const fmtKm = (v) => `${String(Math.round(v * 10) / 10).replace(".", ",")} km`;
+const dateLocale = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 /* ------------------------------------------------------------------ GitHub */
 
 async function github(chemin, options = {}) {
@@ -119,18 +140,118 @@ async function chargerDonnees() {
   return charger(FICHIER_JOUR, { frais: true });
 }
 
-/* Etapes de la synchro (noms des etapes du workflow GitHub) traduites pour l'ecran. */
-const ETAPES_SYNCHRO = {
+/* ------------------------------------------------------------------ ecriture dans le depot prive */
+
+function versBase64(texte) {
+  const octets = new TextEncoder().encode(texte);
+  let bin = "";
+  for (let i = 0; i < octets.length; i += 0x8000) bin += String.fromCharCode(...octets.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+/** Etat actuel d'un fichier (empreinte sha necessaire pour le modifier) ; null s'il n'existe pas. */
+async function etatFichier(chemin) {
+  const r = await fetch(`https://api.github.com/repos/${DEPOT}/contents/${chemin}?t=${Date.now()}`, {
+    headers: { Authorization: `Bearer ${lireJeton()}`, Accept: "application/vnd.github+json" }, cache: "no-store",
+  });
+  if (r.status === 404) return null;
+  if (r.status === 401) throw new Error("jeton");
+  if (!r.ok) throw new Error(`http-${r.status}`);
+  const j = await r.json();
+  let contenu = null;
+  if (j.content) {
+    const bin = atob(j.content.replace(/\n/g, ""));
+    contenu = new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+  }
+  return { sha: j.sha, contenu };
+}
+
+/** Ecrit un fichier du depot prive. `contenu` : objet (ecrit en JSON) ou { base64 } pour une image. */
+async function ecrireFichier(chemin, contenu, message) {
+  for (let essai = 0; essai < 3; essai++) {
+    const actuel = await etatFichier(chemin);
+    const base64 = contenu && contenu.base64 ? contenu.base64 : versBase64(JSON.stringify(contenu, null, 1));
+    const r = await fetch(`https://api.github.com/repos/${DEPOT}/contents/${chemin}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${lireJeton()}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+      body: JSON.stringify({ message, content: base64, ...(actuel ? { sha: actuel.sha } : {}) }),
+    });
+    if (r.ok) { cache.delete(chemin); return; }
+    if (r.status === 409 || r.status === 422) continue; // modifie entre-temps : on relit et on recommence
+    if (r.status === 403 || r.status === 404) throw new Error("ecriture");
+    throw new Error(`http-${r.status}`);
+  }
+  throw new Error("conflit");
+}
+
+async function supprimerFichier(chemin, message) {
+  const actuel = await etatFichier(chemin);
+  if (!actuel) return;
+  const r = await fetch(`https://api.github.com/repos/${DEPOT}/contents/${chemin}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${lireJeton()}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+    body: JSON.stringify({ message, sha: actuel.sha }),
+  });
+  if (!r.ok) throw new Error(r.status === 403 ? "ecriture" : `http-${r.status}`);
+  cache.delete(chemin);
+}
+
+/* ------------------------------------------------------------------ taches GitHub (synchro, coach) */
+
+/* Etapes des taches GitHub traduites pour l'ecran. */
+const ETAPES = {
   "Set up job": "Préparation",
   "Run actions/checkout@v5": "Ouverture de ton dossier",
   "Recuperer les donnees Garmin": "Récupération des données Garmin",
-  "Calculer le diagnostic": "Calcul du diagnostic",
+  "Calculer le diagnostic et le plan": "Calcul du diagnostic et du plan",
   "Installer Claude Code": "Réveil du coach",
   "Debriefs du coach": "Le coach rédige ses débriefs",
-  "Integrer les debriefs": "Intégration des débriefs",
+  "Revue du plan par le coach": "Le coach revoit ton plan",
+  "Integrer le travail du coach": "Mise à jour de l'appli",
+  "Le coach repond": "Le coach lit tes données et te répond",
+  "Mettre a jour le plan": "Mise à jour du plan",
   "Enregistrer dans le depot": "Enregistrement",
 };
-const nomEtape = (n) => ETAPES_SYNCHRO[n] || "Finalisation";
+const nomEtape = (n) => ETAPES[n] || "Finalisation";
+
+/** Lance une tache GitHub et suit son avancement ; `suivi(etape, fraction)` est appele a chaque etape. */
+async function executerTache(fichier, inputs, suivi) {
+  const depart = new Date(Date.now() - 5000).toISOString().slice(0, 19);
+  suivi("Envoi de la demande à GitHub", null);
+  await github(`actions/workflows/${fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main", inputs }) });
+  let run = null;
+  for (let i = 0; i < 300; i++) { // jusqu'a 15 minutes
+    await new Promise((ok) => setTimeout(ok, 3000));
+    if (!run) {
+      const runs = await (await github(`actions/workflows/${fichier}/runs?per_page=5&event=workflow_dispatch&created=>=${depart}`)).json();
+      const liste = runs.workflow_runs || [];
+      run = liste[liste.length - 1] || null;
+      if (!run) { suivi("En attente d'un serveur GitHub", null); continue; }
+    }
+    const r = await (await github(`actions/runs/${run.id}`)).json();
+    if (r.status === "completed") {
+      if (r.conclusion !== "success") throw new Error("tache-echec");
+      return;
+    }
+    const jobs = await (await github(`actions/runs/${run.id}/jobs`)).json();
+    const etapes = (jobs.jobs && jobs.jobs[0] && jobs.jobs[0].steps) || [];
+    if (!etapes.length) { suivi(r.status === "queued" ? "En file d'attente chez GitHub" : "Démarrage", null); continue; }
+    const finies = etapes.filter((e) => e.status === "completed").length;
+    const courante = etapes.find((e) => e.status === "in_progress") || etapes.find((e) => e.status !== "completed");
+    suivi(courante ? nomEtape(courante.name) : "Finalisation", finies / etapes.length);
+  }
+  throw new Error("tache-longue");
+}
+
+const MESSAGES_ERREUR = {
+  jeton: "Le jeton GitHub n'est plus valide. Remplace-le dans les réglages.",
+  acces: "Le jeton n'a pas le droit de lancer cette tâche (permission Actions en écriture).",
+  ecriture: "Le jeton n'a pas le droit d'écrire dans ton dépôt (permission Contents en lecture et écriture).",
+  "tache-echec": "La tâche a échoué. Le détail est dans l'onglet Actions du dépôt Coach-Perso.",
+  "tache-longue": "C'est plus long que prévu. Rouvre l'appli dans quelques minutes.",
+  conflit: "Le fichier a changé pendant l'enregistrement. Réessaie.",
+};
+const messageErreur = (e) => MESSAGES_ERREUR[e.message] || "Connexion indisponible. Vérifie ton réseau et réessaie.";
 
 let synchroEnCours = false;
 
@@ -158,64 +279,37 @@ function panneauSynchro() {
   };
 }
 
-async function lancerSynchro(bouton) {
-  if (synchroEnCours) return;
+/** Synchro complete avec panneau de progression. `titre` : ce qui l'a declenchee (par defaut, le bouton). */
+async function lancerSynchro(titre = "Synchro") {
+  if (synchroEnCours) return toast("Une synchro est déjà en cours.");
   synchroEnCours = true;
-  bouton.classList.add("en-cours");
-  bouton.querySelector("span").textContent = "Synchro…";
+  const bouton = document.querySelector(".synchro");
+  if (bouton) bouton.classList.add("en-cours");
   const panneau = panneauSynchro();
+  panneau.maj("", null, titre);
   const debut = Date.now();
-  const chrono = setInterval(() => {
+  const minuteur = setInterval(() => {
     const s = Math.round((Date.now() - debut) / 1000);
     panneau.temps(`${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`);
   }, 1000);
   try {
-    panneau.maj("Envoi de la demande à GitHub", null);
-    const depart = new Date(Date.now() - 5000).toISOString().slice(0, 19);
-    await github(`actions/workflows/${WORKFLOW_SYNCHRO}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
-    let run = null;
-    for (let i = 0; i < 200; i++) { // jusqu'a 10 minutes
-      await new Promise((ok) => setTimeout(ok, 3000));
-      if (!run) {
-        const runs = await (await github(`actions/workflows/${WORKFLOW_SYNCHRO}/runs?per_page=5&event=workflow_dispatch&created=>=${depart}`)).json();
-        run = (runs.workflow_runs || [])[runs.workflow_runs ? runs.workflow_runs.length - 1 : 0] || null;
-        if (!run) { panneau.maj("En attente d'un serveur GitHub", null); continue; }
-      }
-      const r = await (await github(`actions/runs/${run.id}`)).json();
-      if (r.status === "completed") {
-        if (r.conclusion !== "success") throw new Error("synchro-echec");
-        panneau.maj("Chargement de tes nouvelles données", 1);
-        cache.clear();
-        donnees = await chargerDonnees();
-        afficher(routeActuelle());
-        panneau.maj("Tes données sont à jour", 1, "Synchro terminée");
-        panneau.etat("ok");
-        panneau.fermer(2500);
-        return;
-      }
-      const jobs = await (await github(`actions/runs/${run.id}/jobs`)).json();
-      const etapes = (jobs.jobs && jobs.jobs[0] && jobs.jobs[0].steps) || [];
-      if (!etapes.length) { panneau.maj("En attente d'un serveur GitHub", null); continue; }
-      const finies = etapes.filter((e) => e.status === "completed").length;
-      const courante = etapes.find((e) => e.status === "in_progress") || etapes.find((e) => e.status !== "completed");
-      panneau.maj(courante ? nomEtape(courante.name) : "Finalisation", finies / etapes.length);
-    }
-    throw new Error("synchro-longue");
+    await executerTache(WORKFLOW_SYNCHRO, {}, (etape, f) => panneau.maj(etape, f));
+    panneau.maj("Chargement de tes nouvelles données", 1);
+    cache.clear();
+    donnees = await chargerDonnees();
+    afficher(routeActuelle());
+    panneau.maj("Tes données sont à jour", 1, "Synchro terminée");
+    panneau.etat("ok");
+    panneau.fermer(2500);
   } catch (e) {
-    const messages = {
-      jeton: "Le jeton GitHub n'est plus valide. Remplace-le dans les réglages.",
-      acces: "Le jeton n'a pas le droit de lancer la synchro (permission Actions en écriture).",
-      "synchro-echec": "La synchro a échoué. Le détail est dans l'onglet Actions du dépôt Coach-Perso.",
-      "synchro-longue": "La synchro est toujours en cours. Rouvre l'appli dans quelques minutes.",
-    };
-    panneau.maj(messages[e.message] || "Synchro impossible : connexion indisponible.", 1, "Synchro interrompue");
+    panneau.maj(messageErreur(e), 1, "Synchro interrompue");
     panneau.etat("erreur");
-    panneau.fermer(6000);
+    panneau.fermer(7000);
   } finally {
-    clearInterval(chrono);
+    clearInterval(minuteur);
     synchroEnCours = false;
-    bouton.classList.remove("en-cours");
-    bouton.querySelector("span").textContent = ilYa(donnees && donnees.derniere_synchro);
+    const b = document.querySelector(".synchro");
+    if (b) { b.classList.remove("en-cours"); b.querySelector("span").textContent = ilYa(donnees && donnees.derniere_synchro); }
   }
 }
 
@@ -354,7 +448,7 @@ function graphiqueSemaines(semaines) {
 /* ------------------------------------------------------------------ vues */
 
 function enTete() {
-  const bouton = el("button", { class: "synchro", "aria-label": "Synchroniser maintenant", onclick: (e) => lancerSynchro(e.currentTarget) },
+  const bouton = el("button", { class: `synchro${synchroEnCours ? " en-cours" : ""}`, "aria-label": "Synchroniser maintenant", onclick: () => lancerSynchro() },
     svg(`<path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/>`, { viewBox: "0 0 24 24", "aria-hidden": "true" }),
     el("span", {}, ilYa(donnees.derniere_synchro)));
   return el("div", { class: "entete" },
@@ -374,15 +468,11 @@ function vueAujourdhui() {
       el("p", { class: "debrief-seance" }, [db.nom, db.distance_m ? `${(db.distance_m / 1000).toFixed(1)} km` : null,
         db.vitesse_ms ? `${allure(db.vitesse_ms)}/km` : null, db.fc_moy ? `${Math.round(db.fc_moy)} bpm` : null].filter(Boolean).join(", ")),
       el("p", { class: "suggestion-titre" }, db.verdict),
-      el("ul", { class: "points-debrief" }, db.points.map((p) => el("li", {}, el("b", {}, p.titre), " : ", p.texte))),
+      el("ul", { class: "points-debrief" }, db.points.map((p) => el("li", {}, el("b", {}, p.titre), " : ", p.texte.replace(/\n+/g, " ")))),
       db.demain ? el("p", { class: "demain" }, el("b", {}, "Demain : "), db.demain) : null,
       el("span", { class: "voir-detail" }, "Voir le détail de la séance")));
   } else {
-    frag.push(el("section", { class: `recommandation ${sug.niveau}`, "aria-label": "Recommandation du jour" },
-      el("p", { class: "recommandation-libelle" }, "Recommandation du jour"),
-      el("p", { class: "suggestion-titre" }, sug.titre),
-      sug.consigne ? el("p", { class: "consigne" }, sug.consigne) : null,
-      sug.raisons.length ? el("ul", { class: "raisons" }, sug.raisons.map((r) => el("li", {}, r))) : null));
+    frag.push(carteSeanceDuJour(sug));
   }
 
   if (d.diagnostic && d.diagnostic.length) {
@@ -443,6 +533,23 @@ function vueAujourdhui() {
   return frag;
 }
 
+const LIBELLES_NIVEAU = { repos: "Repos", renfo: "Renforcement", alerte: "Séance allégée", facile: "Séance du jour",
+  qualite: "Séance du jour", course: "Jour de course" };
+
+function carteSeanceDuJour(sug) {
+  return el("section", { class: `recommandation ${sug.niveau}`, "aria-label": "Séance du jour" },
+    el("p", { class: "recommandation-libelle" }, LIBELLES_NIVEAU[sug.niveau] || "Recommandation du jour"),
+    el("p", { class: "suggestion-titre" }, sug.titre),
+    sug.duree_min || sug.distance_km ? el("p", { class: "seance-chiffres" },
+      [sug.duree_min ? `${sug.duree_min} min` : null, sug.distance_km ? `${String(sug.distance_km).replace(".", ",")} km` : null]
+        .filter(Boolean).join(" · ")) : null,
+    sug.structure && sug.structure.length ? el("ol", { class: "structure" }, sug.structure.map((x) => el("li", {}, x))) : null,
+    sug.complement ? el("p", { class: "complement" }, el("b", {}, "En plus : "), `${sug.complement.titre}.`) : null,
+    sug.consigne && !(sug.structure || []).length ? el("p", { class: "consigne" }, sug.consigne) : null,
+    sug.raisons && sug.raisons.length ? el("ul", { class: "raisons" }, sug.raisons.map((r) => el("li", {}, r))) : null,
+    el("a", { class: "voir-detail", href: "#/plan" }, "Voir la semaine"));
+}
+
 function stat(libelle, chiffre) {
   return el("div", { class: "stat" }, el("div", { class: "libelle" }, libelle), el("div", { class: "chiffre" }, chiffre));
 }
@@ -452,10 +559,6 @@ function effet(cle) {
   return noms[cle] || "–";
 }
 
-function vueEnConstruction(titre, texte) {
-  return [el("div", { class: "entete" }), el("h1", {}, titre), el("p", { class: "note" }, texte)];
-}
-
 function vueConfiguration(erreur) {
   return [el("section", { class: "panneau" },
     el("h1", {}, "Coach Perso"),
@@ -463,7 +566,7 @@ function vueConfiguration(erreur) {
     el("ol", {},
       el("li", {}, "Sur github.com : ta photo, puis ", el("strong", {}, "Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token"), "."),
       el("li", {}, "Repository access : ", el("strong", {}, "Only select repositories → Coach-Perso"), "."),
-      el("li", {}, "Permissions : ", el("strong", {}, "Contents : Read-only"), " et ", el("strong", {}, "Actions : Read and write"), "."),
+      el("li", {}, "Permissions : ", el("strong", {}, "Contents : Read and write"), " et ", el("strong", {}, "Actions : Read and write"), "."),
       el("li", {}, "Génère le jeton, copie-le et colle-le ci-dessous.")),
     erreur ? el("p", { class: "erreur" }, erreur) : null,
     el("form", { onsubmit: async (e) => {
@@ -489,8 +592,8 @@ const VUES = {
   aujourdhui: () => vueAujourdhui(),
   diagnostic: (p) => vueDiagnostic(p[0] || "seances"),
   seance: (p) => vueSeance(p[0]),
-  plan: () => vueEnConstruction("Plan", "Le plan d'entraînement, recalculé à chaque synchro, arrive bientôt."),
-  objectif: () => vueEnConstruction("Objectif", "Crée un objectif de course, ou laisse le coach te faire progresser sans plafond. Bientôt disponible."),
+  plan: () => vuePlan(),
+  objectif: () => vueObjectif(),
 };
 const ONGLET_DE = { seance: "diagnostic" };
 
@@ -536,9 +639,13 @@ function aller(...route) {
   else location.hash = adresse;
 }
 
-window.addEventListener("hashchange", () => donnees && afficher(routeActuelle()));
+window.addEventListener("hashchange", () => {
+  document.querySelectorAll(".feuille-fond").forEach((f) => f.remove());
+  document.body.classList.remove("feuille-ouverte");
+  if (donnees) afficher(routeActuelle());
+});
 document.querySelectorAll(".onglet").forEach((o) => o.addEventListener("click", () => donnees && aller(o.dataset.vue)));
-document.getElementById("bulle-coach").addEventListener("click", () => toast("Le coach arrive dans une prochaine version."));
+document.getElementById("bulle-coach").addEventListener("click", () => donnees && ouvrirChat());
 
 async function demarrer() {
   if (!lireJeton()) return afficher("configuration");

@@ -76,8 +76,8 @@ function ligneSeance(s) {
       el("span", { class: "seance-repere", style: `background:${couleurEffet(s.effet, course)}`, "aria-hidden": "true" }),
       el("span", { class: "seance-texte" },
         el("span", { class: "seance-titre" }, `${majuscule(fmtJourCourt.format(date))}, ${course ? effetLong(s.effet, s.type) : (NOMS_TYPES[s.type] || "activité").toLowerCase()}`),
-        el("span", { class: "seance-details" }, details.filter(Boolean).join("   "))),
-      s.verdict ? el("span", { class: "seance-verdict" }, s.verdict) : null,
+        el("span", { class: "seance-details" }, details.filter(Boolean).join("   ")),
+        s.verdict ? el("span", { class: "seance-verdict" }, el("i", { class: `pastille ${s.tonalite || ""}`, "aria-hidden": "true" }), s.verdict) : null),
       el("span", { class: "chevron", "aria-hidden": "true" }, "›")));
 }
 
@@ -572,8 +572,12 @@ async function sectionBilans() {
         stat("Intenses", `${s.qualite}`),
         stat("Renfo", `${s.renfo}`),
         stat("Charge", `${s.charge}`)),
-      el("ul", { class: "points-bilan" }, s.texte.map((t) => el("li", {}, t)))));
+      s.coach && s.coach.verdict
+        ? [el("p", { class: "bilan-verdict" }, s.coach.verdict),
+          el("ul", { class: "points-bilan" }, (s.coach.points || []).map((t) => el("li", {}, t))),
+          (s.coach.priorites || []).length ? [el("h3", { class: "bilan-sous-titre" }, "Priorités de la semaine suivante"),
+            el("ul", { class: "points-bilan" }, s.coach.priorites.map((t) => el("li", {}, t)))] : null]
+        : el("ul", { class: "points-bilan" }, s.texte.map((t) => el("li", {}, t)))));
   }
-  frag.push(el("p", { class: "note" }, "Ces bilans sont rédigés par des règles automatiques. Le coach les écrira lui-même dès qu'il sera branché."));
   return frag;
 }
