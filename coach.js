@@ -85,7 +85,13 @@ async function ouvrirChat() {
       const texte = attente.querySelector(".attente-texte");
       try {
         if (lancer) {
-          await executerTache(WORKFLOW_CHAT, { message_id: id }, (etape) => { texte.textContent = etape; });
+          await executerTache(WORKFLOW_CHAT, { message_id: id }, (etape) => { texte.textContent = etape; }, {
+            pas: 2000,
+            termine: async () => {
+              const conv = await charger(FICHIER_CONVERSATION, { frais: true });
+              return ((conv && conv.messages) || []).some((m) => m.role === "coach" && m.en_reponse_a === id);
+            },
+          });
         } else {
           // message envoye lors d'une ouverture precedente : on guette la reponse
           texte.textContent = "Le coach est en train de te répondre…";

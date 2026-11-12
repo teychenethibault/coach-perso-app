@@ -11,14 +11,15 @@ function nomDistance(o) {
 }
 
 async function vueObjectif() {
-  const o = await charger(FICHIER_OBJECTIF_APP, { frais: true });
+  const [o, defis] = await Promise.all([charger(FICHIER_OBJECTIF_APP, { frais: true }), charger("data/app/defis.json", { frais: true })]);
   const frag = [enTete(), el("h1", {}, "Objectif")];
   if (!o) {
     frag.push(el("p", { class: "note" }, "Ton objectif sera calculé à la prochaine synchro."));
     return frag;
   }
-  if (o.course) frag.push(...vueCourse(o));
-  else frag.push(...vueProgression(o));
+  const parties = o.course ? vueCourse(o) : vueProgression(o);
+  // les defis viennent juste apres la carte principale
+  frag.push(parties[0], ...blocDefis(defis), ...parties.slice(1));
 
   if ((o.records || []).length) {
     frag.push(el("h2", {}, "Tes records"));
@@ -35,6 +36,56 @@ async function vueObjectif() {
     frag.push(el("section", { class: "carte passe" },
       el("p", { class: "sans-marge" }, el("b", {}, `${nomDistance(p.objectif || p)} du ${fmtDateLongue.format(new Date((p.objectif || p).date))}`)),
       el("p", { class: "note" }, p.resultat_s ? `Réalisé en ${chrono(p.resultat_s)} pour un objectif de ${chrono((p.objectif || p).temps_s)}.` : "Aucune course enregistrée ce jour-là.")));
+  }
+  return frag;
+}
+
+/* ------------------------------------------------------------------ defis et trophees */
+
+const COULEUR_COMPETENCE = { force: "#bf5af2", endurance: "#0a84ff", seuil: "#ff9f0a", vma: "#ff453a",
+  economie: "#5ac8fa", fatigue: "#30d158", discipline: "#ffd60a" };
+
+function blocDefis(d) {
+  if (!d || !(d.actifs || []).length && !(d.trophees || []).length) return [];
+  const frag = [];
+  if ((d.actifs || []).length) {
+    frag.push(el("div", { class: "semaine-tete" }, el("h2", {}, "Tes défis"), el("span", {}, "fixés par le coach")));
+    frag.push(el("ul", { class: "defis" }, d.actifs.map((x) => {
+      const couleur = COULEUR_COMPETENCE[x.competence] || "#0a84ff";
+      return el("li", { class: "defi", style: `--defi:${couleur}` },
+        el("button", { class: "defi-tete", "aria-expanded": "false", onclick: (e) => {
+          const ouvert = e.currentTarget.parentElement.classList.toggle("ouvert");
+          e.currentTarget.setAttribute("aria-expanded", String(ouvert));
+        } },
+          el("span", { class: "defi-titre" }, x.titre),
+          el("span", { class: "defi-delai" }, x.jours_restants > 0 ? `${x.jours_restants} j` : "dernier jour")),
+        el("div", { class: "jauge defi-jauge", role: "progressbar", "aria-valuenow": String(x.progression || 0), "aria-valuemin": "0", "aria-valuemax": "100" },
+          el("span", { style: `width:${Math.max(2, x.progression || 0)}%;background:${couleur}` })),
+        el("p", { class: "defi-ou" }, [
+          x.depart_texte ? `Départ ${x.depart_texte}` : null,
+          x.unite === "semaines" ? null : x.valeur_texte ? `meilleur depuis : ${x.valeur_texte}` : "aucune séance depuis",
+          x.unite === "semaines" ? `${x.valeur || 0} semaine${(x.valeur || 0) > 1 ? "s" : ""} validée${(x.valeur || 0) > 1 ? "s" : ""} sur ${x.cible}` : null,
+        ].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase())),
+        el("p", { class: "defi-description" }, x.description, el("span", { class: "defi-echeance" }, ` À valider avant le ${x.echeance_texte}.`)));
+    })));
+    frag.push(el("p", { class: "note" }, "Validés automatiquement par ta montre. Un défi réussi devient un trophée et le coach en fixe un nouveau."));
+  }
+  const trophees = d.trophees || [];
+  frag.push(el("div", { class: "semaine-tete" }, el("h2", {}, "Trophées"), el("span", {}, trophees.length ? `${trophees.length}` : "")));
+  if (!trophees.length) {
+    frag.push(el("p", { class: "note sans-marge" }, "Ton premier trophée arrivera avec ton premier défi réussi."));
+  } else {
+    frag.push(el("ul", { class: "trophees" }, trophees.slice(0, 24).map((t) => {
+      const nouveau = (d.nouveaux || []).includes(t.id);
+      const contenu = [
+        el("span", { class: "medaille", style: `--defi:${COULEUR_COMPETENCE[t.competence] || "#ffd60a"}`, "aria-hidden": "true" },
+          svg('<path d="M8 2h8l-2 6h-4z" fill="currentColor" opacity=".55"/><circle cx="12" cy="15" r="6.5" fill="currentColor"/><path d="M12 11.6l1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" fill="#000" opacity=".45"/>', { viewBox: "0 0 24 24" })),
+        el("span", { class: "trophee-titre" }, t.titre),
+        el("span", { class: "trophee-meta" }, [t.resultat, t.date_texte].filter(Boolean).join(", ")),
+        nouveau ? el("span", { class: "etiquette ok" }, "Nouveau") : null,
+      ];
+      return el("li", { class: nouveau ? "nouveau" : "" }, t.seance_id ? el("a", { href: `#/seance/${t.seance_id}` }, contenu) : el("div", {}, contenu));
+    })));
   }
   return frag;
 }

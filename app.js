@@ -204,6 +204,8 @@ const ETAPES = {
   "Run actions/checkout@v5": "Ouverture de ton dossier",
   "Recuperer les donnees Garmin": "Récupération des données Garmin",
   "Calculer le diagnostic et le plan": "Calcul du diagnostic et du plan",
+  "Semaine en cours": "Réveil du coach",
+  "Reprendre Claude Code": "Réveil du coach",
   "Installer Claude Code": "Réveil du coach",
   "Debriefs du coach": "Le coach rédige ses débriefs",
   "Revue du plan par le coach": "Le coach revoit ton plan",
@@ -214,14 +216,16 @@ const ETAPES = {
 };
 const nomEtape = (n) => ETAPES[n] || "Finalisation";
 
-/** Lance une tache GitHub et suit son avancement ; `suivi(etape, fraction)` est appele a chaque etape. */
-async function executerTache(fichier, inputs, suivi) {
+/** Lance une tache GitHub et suit son avancement ; `suivi(etape, fraction)` est appele a chaque etape.
+    `termine` (facultatif) : verification qui permet de s'arreter des que le resultat est enregistre. */
+async function executerTache(fichier, inputs, suivi, { termine = null, pas = 3000 } = {}) {
   const depart = new Date(Date.now() - 5000).toISOString().slice(0, 19);
   suivi("Envoi de la demande à GitHub", null);
   await github(`actions/workflows/${fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main", inputs }) });
   let run = null;
-  for (let i = 0; i < 300; i++) { // jusqu'a 15 minutes
-    await new Promise((ok) => setTimeout(ok, 3000));
+  for (let i = 0; i < 900000 / pas; i++) { // jusqu'a 15 minutes
+    await new Promise((ok) => setTimeout(ok, pas));
+    if (termine && run && await termine().catch(() => false)) return;
     if (!run) {
       const runs = await (await github(`actions/workflows/${fichier}/runs?per_page=5&event=workflow_dispatch&created=>=${depart}`)).json();
       const liste = runs.workflow_runs || [];
