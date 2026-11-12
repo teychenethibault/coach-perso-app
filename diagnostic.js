@@ -402,6 +402,18 @@ async function sectionCorps() {
   if (!c) return [el("p", { class: "note" }, "Ces analyses apparaîtront après la prochaine synchro.")];
   const frag = [];
 
+  // zones cardiaques du coach
+  const z = donnees && donnees.zones;
+  if (z) {
+    frag.push(el("h2", {}, "Tes zones cardiaques"));
+    frag.push(el("section", { class: "carte" },
+      el("ul", { class: "liste-zones zones-coach" }, z.plages.map((p, i) => el("li", {},
+        el("i", { style: `background:${COULEURS_ZONES[i]}`, "aria-hidden": "true" }),
+        el("span", {}, `Zone ${p.zone}, ${p.nom}`),
+        el("b", {}, `${p.min} à ${p.max} bpm`)))),
+      el("p", { class: "note" }, `Méthode de Karvonen : FC max ${z.fc_max}, FC de repos ${z.fc_repos} (moyenne des 30 derniers jours). Les zones se recalculent à chaque synchro.`)));
+  }
+
   // repartition des intensites
   const r = c.intensites.quatre_semaines_pct;
   frag.push(el("h2", {}, "Répartition des intensités"));
@@ -412,9 +424,9 @@ async function sectionCorps() {
         ? el("span", { style: `flex:${r[k]};background:${COULEURS_INTENSITE[k]}` }, r[k] >= 10 ? `${r[k]} %` : "") : null),
       el("i", { class: "cible", style: "left:80%", title: "Cible : 80 % facile" })),
     el("div", { class: "legende" },
-      el("span", {}, el("i", { style: `background:${COULEURS_INTENSITE.facile}` }), "Facile, cible 80 %"),
-      el("span", {}, el("i", { style: `background:${COULEURS_INTENSITE.modere}` }), "Modéré"),
-      el("span", {}, el("i", { style: `background:${COULEURS_INTENSITE.intense}` }), "Intense")),
+      el("span", {}, el("i", { style: `background:${COULEURS_INTENSITE.facile}` }), "Facile (zones 1-2), cible 80 %"),
+      el("span", {}, el("i", { style: `background:${COULEURS_INTENSITE.modere}` }), "Modéré (3-4)"),
+      el("span", {}, el("i", { style: `background:${COULEURS_INTENSITE.intense}` }), "Intense (5)")),
     c.intensites.lecture.map((t) => el("p", { class: "note" }, t)),
     barresIntensites(c.intensites.semaines)));
 

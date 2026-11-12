@@ -183,6 +183,7 @@ a { color: inherit; text-decoration: none; }
 .barre-zones { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; }
 .liste-zones { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
 .liste-zones li { display: grid; grid-template-columns: 10px 1fr auto 56px 40px; gap: 8px; align-items: center; }
+.liste-zones.zones-coach li { grid-template-columns: 10px 1fr auto; }
 .liste-zones i { width: 10px; height: 10px; border-radius: 3px; }
 .liste-zones b, .zone-pct, .zone-bpm { text-align: right; font-variant-numeric: tabular-nums; }
 .zone-bpm, .zone-pct { color: var(--texte-2); font-size: 13px; }
