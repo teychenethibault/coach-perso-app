@@ -87,6 +87,10 @@ h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 32px 0 
 .points-debrief { margin: 12px 0 0; padding-left: 18px; font-size: 15px; line-height: 1.45; }
 .points-debrief li + li { margin-top: 6px; }
 .demain { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.12); font-size: 15px; }
+.debrief-verdict-accueil { margin: 8px 0 0; font-size: 16px; line-height: 1.4; }
+.point-accueil { margin: 10px 0 0; font-size: 15px; line-height: 1.45; color: var(--texte-2); }
+.point-accueil b { color: var(--texte); }
+.demain-modifie { margin: 6px 0 0; font-size: 13px; color: var(--orange); }
 .voir-detail { display: inline-block; margin-top: 12px; font-size: 14px; color: #0a84ff; font-weight: 600; }
 .recommandation-libelle { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--ton); }
 .suggestion-titre {

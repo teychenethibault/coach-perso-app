@@ -471,9 +471,11 @@ function vueAujourdhui() {
       el("p", { class: "recommandation-libelle" }, `Débrief du jour${db.auteur === "coach" ? ", par ton coach" : ""}`),
       el("p", { class: "debrief-seance" }, [db.nom, db.distance_m ? `${(db.distance_m / 1000).toFixed(1)} km` : null,
         db.vitesse_ms ? `${allure(db.vitesse_ms)}/km` : null, db.fc_moy ? `${Math.round(db.fc_moy)} bpm` : null].filter(Boolean).join(", ")),
-      el("p", { class: "suggestion-titre" }, db.verdict),
-      el("ul", { class: "points-debrief" }, db.points.map((p) => el("li", {}, el("b", {}, p.titre), " : ", p.texte.replace(/\n+/g, " ")))),
-      db.demain ? el("p", { class: "demain" }, el("b", {}, "Demain : "), db.demain) : null,
+      // sur l'accueil : le titre court, le verdict et le point a corriger ; le reste est dans la seance
+      el("p", { class: "suggestion-titre" }, db.resume || db.verdict),
+      db.resume ? el("p", { class: "debrief-verdict-accueil" }, db.verdict) : null,
+      (db.points || []).slice(0, 1).map((p) => el("p", { class: "point-accueil" }, el("b", {}, `${p.titre} : `), p.texte.replace(/\n+/g, " "))),
+      db.seance_demain ? ligneDemain(db.seance_demain) : db.demain ? el("p", { class: "demain" }, el("b", {}, "Demain : "), db.demain) : null,
       el("span", { class: "voir-detail" }, "Voir le détail de la séance")));
   } else {
     frag.push(carteSeanceDuJour(sug));
@@ -552,6 +554,15 @@ function carteSeanceDuJour(sug) {
     sug.consigne && !(sug.structure || []).length ? el("p", { class: "consigne" }, sug.consigne) : null,
     sug.raisons && sug.raisons.length ? el("ul", { class: "raisons" }, sug.raisons.map((r) => el("li", {}, r))) : null,
     el("a", { class: "voir-detail", href: "#/plan" }, "Voir la semaine"));
+}
+
+/** La seance de demain, lue dans le plan : elle suit les changements faits avec le coach. */
+function ligneDemain(j) {
+  const details = j.type === "repos" ? [] : [j.duree_min && !/min/.test(j.titre) ? `${j.duree_min} min` : null,
+    j.distance_km ? fmtKm(j.distance_km) : null, j.fc ? `FC ${j.fc}` : null, j.allure || null].filter(Boolean);
+  return el("div", { class: "demain" },
+    el("p", { class: "sans-marge" }, el("b", {}, "Demain : "), j.titre, details.length ? `, ${details.join(", ")}` : "", "."),
+    j.modifie ? el("p", { class: "demain-modifie" }, "Séance changée avec le coach.") : null);
 }
 
 function stat(libelle, chiffre) {

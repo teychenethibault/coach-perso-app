@@ -173,7 +173,7 @@ function blocDebrief(db) {
   return el("section", { class: `carte debrief ${db.tonalite || ""}` },
     db.verdict ? el("p", { class: "debrief-verdict" }, db.verdict) : null,
     (db.points || []).map((p) => el("div", { class: "debrief-point" },
-      el("h3", {}, p.titre), el("p", {}, p.texte))));
+      el("h3", {}, p.titre), String(p.texte || "").split(/\n+/).filter(Boolean).map((t) => el("p", {}, t)))));
 }
 
 /** Deux courbes superposees sur la distance : allure (en haut, plus vite = plus haut) et FC (bandes de zones). */
