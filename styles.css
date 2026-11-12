@@ -74,6 +74,16 @@ h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 32px 0 
 .recommandation.repos { --ton: var(--rouge); }
 .recommandation.facile { --ton: var(--bb); }
 .recommandation.qualite { --ton: var(--vert); }
+.recommandation.bien { --ton: var(--vert); }
+.recommandation.moyen { --ton: var(--orange); }
+.recommandation.mal { --ton: var(--rouge); }
+.debrief-jour { display: block; }
+.debrief-jour .suggestion-titre { font-size: 22px; line-height: 1.2; }
+.debrief-seance { margin: 0 0 6px; font-size: 13px; color: var(--texte-2); }
+.points-debrief { margin: 12px 0 0; padding-left: 18px; font-size: 15px; line-height: 1.45; }
+.points-debrief li + li { margin-top: 6px; }
+.demain { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.12); font-size: 15px; }
+.voir-detail { display: inline-block; margin-top: 12px; font-size: 14px; color: #0a84ff; font-weight: 600; }
 .recommandation-libelle { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--ton); }
 .suggestion-titre {
   font-size: 30px; line-height: 1.08; font-weight: 800; letter-spacing: -0.02em; margin: 0;

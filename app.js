@@ -300,11 +300,24 @@ function vueAujourdhui() {
   const d = donnees, rec = d.recuperation, sug = d.suggestion;
   const frag = [enTete(), el("h1", {}, "Aujourd'hui")];
 
-  frag.push(el("section", { class: `recommandation ${sug.niveau}`, "aria-label": "Recommandation du jour" },
-    el("p", { class: "recommandation-libelle" }, "Recommandation du jour"),
-    el("p", { class: "suggestion-titre" }, sug.titre),
-    sug.consigne ? el("p", { class: "consigne" }, sug.consigne) : null,
-    sug.raisons.length ? el("ul", { class: "raisons" }, sug.raisons.map((r) => el("li", {}, r))) : null));
+  const db = d.debrief_du_jour;
+  if (db) {
+    // une course faite aujourd'hui : le debrief prend la place de la recommandation
+    frag.push(el("a", { class: `recommandation debrief-jour ${db.tonalite || ""}`, href: `#/seance/${db.id}`, "aria-label": "Débrief du jour" },
+      el("p", { class: "recommandation-libelle" }, `Débrief du jour${db.auteur === "coach" ? ", par ton coach" : ""}`),
+      el("p", { class: "debrief-seance" }, [db.nom, db.distance_m ? `${(db.distance_m / 1000).toFixed(1)} km` : null,
+        db.vitesse_ms ? `${allure(db.vitesse_ms)}/km` : null, db.fc_moy ? `${Math.round(db.fc_moy)} bpm` : null].filter(Boolean).join(", ")),
+      el("p", { class: "suggestion-titre" }, db.verdict),
+      el("ul", { class: "points-debrief" }, db.points.map((p) => el("li", {}, el("b", {}, p.titre), " : ", p.texte))),
+      db.demain ? el("p", { class: "demain" }, el("b", {}, "Demain : "), db.demain) : null,
+      el("span", { class: "voir-detail" }, "Voir le détail de la séance")));
+  } else {
+    frag.push(el("section", { class: `recommandation ${sug.niveau}`, "aria-label": "Recommandation du jour" },
+      el("p", { class: "recommandation-libelle" }, "Recommandation du jour"),
+      el("p", { class: "suggestion-titre" }, sug.titre),
+      sug.consigne ? el("p", { class: "consigne" }, sug.consigne) : null,
+      sug.raisons.length ? el("ul", { class: "raisons" }, sug.raisons.map((r) => el("li", {}, r))) : null));
+  }
 
   if (d.diagnostic && d.diagnostic.length) {
     frag.push(el("h2", {}, "État de forme"));
