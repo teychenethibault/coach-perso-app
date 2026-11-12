@@ -35,7 +35,7 @@ body {
   color: var(--texte);
   font: 16px/1.4 var(--sans);
   -webkit-font-smoothing: antialiased;
-  padding-bottom: var(--bas);
+  padding-bottom: calc(var(--bas) + 72px); /* la bulle du coach ne cache jamais la fin de page */
 }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 :focus-visible { outline: 2px solid var(--texte); outline-offset: 3px; border-radius: 6px; }
@@ -74,6 +74,16 @@ h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 32px 0 
 .recommandation.repos { --ton: var(--rouge); }
 .recommandation.facile { --ton: var(--bb); }
 .recommandation.qualite { --ton: var(--vert); }
+.recommandation.bien { --ton: var(--vert); }
+.recommandation.moyen { --ton: var(--orange); }
+.recommandation.mal { --ton: var(--rouge); }
+.debrief-jour { display: block; }
+.debrief-jour .suggestion-titre { font-size: 22px; line-height: 1.2; }
+.debrief-seance { margin: 0 0 6px; font-size: 13px; color: var(--texte-2); }
+.points-debrief { margin: 12px 0 0; padding-left: 18px; font-size: 15px; line-height: 1.45; }
+.points-debrief li + li { margin-top: 6px; }
+.demain { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.12); font-size: 15px; }
+.voir-detail { display: inline-block; margin-top: 12px; font-size: 14px; color: #0a84ff; font-weight: 600; }
 .recommandation-libelle { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--ton); }
 .suggestion-titre {
   font-size: 30px; line-height: 1.08; font-weight: 800; letter-spacing: -0.02em; margin: 0;
@@ -134,6 +144,84 @@ svg.graphique text { fill: var(--texte-3); font: 11px var(--sans); }
   margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--trait);
   font-size: 14px; color: var(--texte-2);
 }
+
+/* ---------------------------------------------------------- liens et navigation interne */
+a { color: inherit; text-decoration: none; }
+.carte-lien { display: block; }
+.retour { display: inline-block; color: #0a84ff; font-size: 17px; padding: 6px 0; }
+.sans-marge { margin: 0; }
+.selecteur {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+  background: var(--surface); border-radius: 12px; padding: 3px; margin-bottom: 8px;
+}
+.selecteur a { text-align: center; font-size: 13px; font-weight: 600; color: var(--texte-2); padding: 8px 2px; border-radius: 9px; }
+.selecteur a.actif { background: var(--surface-2); color: var(--texte); }
+
+/* ---------------------------------------------------------- liste des seances */
+.mois { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.mois h2 { margin-bottom: 8px; }
+.mois-total { font-size: 13px; color: var(--texte-2); }
+.liste-seances { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--rayon); overflow: hidden; }
+.liste-seances li + li { border-top: 1px solid var(--trait); }
+.seance { display: grid; grid-template-columns: 4px 1fr auto 12px; align-items: center; gap: 12px; padding: 12px 14px; }
+.seance-repere { width: 4px; height: 34px; border-radius: 2px; }
+.seance-texte { display: flex; flex-direction: column; min-width: 0; }
+.seance-titre { font-size: 15px; font-weight: 600; }
+.seance-details { font-size: 13px; color: var(--texte-2); white-space: pre; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.seance-verdict { font-size: 12px; color: var(--texte-2); max-width: 90px; text-align: right; }
+.chevron { color: var(--texte-3); font-size: 22px; line-height: 1; }
+
+/* ---------------------------------------------------------- detail d'une seance */
+.titre-seance { font-size: 28px; margin-top: 2px; }
+.stats-seance { grid-template-columns: repeat(3, 1fr); }
+.stats-seance .chiffre { font-size: 19px; white-space: nowrap; }
+.stats-seance.carte { display: grid; }
+.debrief-verdict { margin: 0 0 12px; font-size: 18px; font-weight: 700; line-height: 1.35; }
+.debrief-point + .debrief-point { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--trait); }
+.debrief-point h3 { margin: 0 0 4px; font-size: 14px; color: var(--texte-2); font-weight: 600; }
+.debrief-point p { margin: 0; line-height: 1.5; }
+.barre-zones { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; }
+.liste-zones { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+.liste-zones li { display: grid; grid-template-columns: 10px 1fr auto 56px 40px; gap: 8px; align-items: center; }
+.liste-zones.zones-coach li { grid-template-columns: 10px 1fr auto; }
+.liste-zones i { width: 10px; height: 10px; border-radius: 3px; }
+.liste-zones b, .zone-pct, .zone-bpm { text-align: right; font-variant-numeric: tabular-nums; }
+.zone-bpm, .zone-pct { color: var(--texte-2); font-size: 13px; }
+.derive.bien { color: var(--vert); }
+.derive.moyen { color: var(--orange); }
+.derive.mal { color: var(--rouge); }
+.tableau-km table, .tableau-similaires { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+.tableau-km th, .tableau-similaires th { text-align: left; font-size: 12px; font-weight: 600; color: var(--texte-2); padding: 0 6px 8px 0; }
+.tableau-km td, .tableau-similaires td { padding: 6px 6px 6px 0; border-top: 1px solid var(--trait); }
+.km-allure { position: relative; width: 45%; }
+.km-barre { position: absolute; left: 0; top: 5px; bottom: 5px; border-radius: 4px; background: rgba(10, 132, 255, 0.28); }
+.km-valeur { position: relative; padding-left: 6px; font-weight: 600; }
+.tableau-similaires tr.actuelle td { font-weight: 700; color: #0a84ff; }
+.tableau-similaires tbody tr:not(.actuelle) { cursor: pointer; }
+.comparaison-lecture { margin-bottom: 12px; font-weight: 600; }
+
+/* ---------------------------------------------------------- corps, competences, bilans */
+.carte-courbe + .carte-courbe { margin-top: 10px; }
+.nom-courbe { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.nom-courbe i { width: 10px; height: 10px; border-radius: 50%; }
+.barre-intensites { position: relative; display: flex; height: 30px; border-radius: 8px; overflow: hidden; gap: 2px; margin: 10px 0 8px; }
+.barre-intensites span { display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; }
+.barre-intensites .cible { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; }
+.priorite { margin-bottom: 14px; }
+.liste-competences { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--rayon); }
+.competence { padding: 14px 16px; }
+.competence + .competence { border-top: 1px solid var(--trait); }
+.competence-tete { display: flex; justify-content: space-between; align-items: center; }
+.competence-nom { font-weight: 700; font-size: 15px; }
+.competence-tete .fleches { width: 32px; height: 26px; }
+.jauge { height: 8px; border-radius: 4px; background: var(--surface-2); margin: 8px 0; overflow: hidden; }
+.jauge span { display: block; height: 100%; border-radius: 4px; }
+.competence-mesure { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--texte-2); }
+.competence-mesure b { color: var(--texte); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bilan + .bilan { margin-top: 10px; }
+.bilan .stats { margin-top: 10px; }
+.points-bilan { margin: 12px 0 0; padding-left: 18px; color: var(--texte); font-size: 15px; line-height: 1.45; }
+.points-bilan li + li { margin-top: 4px; }
 
 /* ---------------------------------------------------------- configuration, erreurs, vides */
 .panneau { margin-top: 12vh; }

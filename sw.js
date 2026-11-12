@@ -1,8 +1,8 @@
 // Service worker : garde l'appli disponible hors connexion.
 // Les donnees personnelles ne sont jamais mises en cache ici : elles viennent
 // de l'API GitHub a chaque ouverture.
-const VERSION = "coach-v5";
-const COQUILLE = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "icon-192.png", "apple-touch-icon.png"];
+const VERSION = "coach-v9";
+const COQUILLE = ["./", "index.html", "styles.css", "app.js", "diagnostic.js", "manifest.webmanifest", "icon-192.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(COQUILLE)).then(() => self.skipWaiting()));
