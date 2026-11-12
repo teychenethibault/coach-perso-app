@@ -119,35 +119,101 @@ async function chargerDonnees() {
   return charger(FICHIER_JOUR, { frais: true });
 }
 
+/* Etapes de la synchro (noms des etapes du workflow GitHub) traduites pour l'ecran. */
+const ETAPES_SYNCHRO = {
+  "Set up job": "Préparation",
+  "Run actions/checkout@v5": "Ouverture de ton dossier",
+  "Recuperer les donnees Garmin": "Récupération des données Garmin",
+  "Calculer le diagnostic": "Calcul du diagnostic",
+  "Installer Claude Code": "Réveil du coach",
+  "Debriefs du coach": "Le coach rédige ses débriefs",
+  "Integrer les debriefs": "Intégration des débriefs",
+  "Enregistrer dans le depot": "Enregistrement",
+};
+const nomEtape = (n) => ETAPES_SYNCHRO[n] || "Finalisation";
+
+let synchroEnCours = false;
+
+/** Panneau de progression fixe en haut de l'ecran. */
+function panneauSynchro() {
+  let p = document.getElementById("panneau-synchro");
+  if (!p) {
+    p = el("div", { id: "panneau-synchro", class: "panneau-synchro", role: "status", "aria-live": "polite" },
+      el("div", { class: "ps-ligne" }, el("b", { class: "ps-titre" }, "Synchro"), el("span", { class: "ps-temps" }, "")),
+      el("div", { class: "ps-etape" }, ""),
+      el("div", { class: "ps-barre" }, el("span", { class: "ps-plein" })));
+    document.body.append(p);
+  }
+  return {
+    maj(etape, fraction, titre) {
+      p.querySelector(".ps-etape").textContent = etape;
+      if (titre) p.querySelector(".ps-titre").textContent = titre;
+      const plein = p.querySelector(".ps-plein");
+      plein.classList.toggle("indetermine", fraction == null);
+      if (fraction != null) plein.style.width = `${Math.max(4, Math.round(fraction * 100))}%`;
+    },
+    temps(t) { p.querySelector(".ps-temps").textContent = t; },
+    etat(cls) { p.className = `panneau-synchro ${cls || ""}`; },
+    fermer(delai = 0) { setTimeout(() => p.remove(), delai); },
+  };
+}
+
 async function lancerSynchro(bouton) {
+  if (synchroEnCours) return;
+  synchroEnCours = true;
   bouton.classList.add("en-cours");
   bouton.querySelector("span").textContent = "Synchro…";
+  const panneau = panneauSynchro();
+  const debut = Date.now();
+  const chrono = setInterval(() => {
+    const s = Math.round((Date.now() - debut) / 1000);
+    panneau.temps(`${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`);
+  }, 1000);
   try {
-    const depart = new Date().toISOString();
+    panneau.maj("Envoi de la demande à GitHub", null);
+    const depart = new Date(Date.now() - 5000).toISOString().slice(0, 19);
     await github(`actions/workflows/${WORKFLOW_SYNCHRO}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
-    toast("Synchro lancée. Elle prend une à deux minutes.");
-    for (let i = 0; i < 40; i++) {
-      await new Promise((ok) => setTimeout(ok, 8000));
-      const runs = await (await github(`actions/workflows/${WORKFLOW_SYNCHRO}/runs?per_page=1&created=>=${depart.slice(0, 19)}`)).json();
-      const run = runs.workflow_runs && runs.workflow_runs[0];
-      if (run && run.status === "completed") {
-        if (run.conclusion !== "success") throw new Error("synchro-echec");
+    let run = null;
+    for (let i = 0; i < 200; i++) { // jusqu'a 10 minutes
+      await new Promise((ok) => setTimeout(ok, 3000));
+      if (!run) {
+        const runs = await (await github(`actions/workflows/${WORKFLOW_SYNCHRO}/runs?per_page=5&event=workflow_dispatch&created=>=${depart}`)).json();
+        run = (runs.workflow_runs || [])[runs.workflow_runs ? runs.workflow_runs.length - 1 : 0] || null;
+        if (!run) { panneau.maj("En attente d'un serveur GitHub", null); continue; }
+      }
+      const r = await (await github(`actions/runs/${run.id}`)).json();
+      if (r.status === "completed") {
+        if (r.conclusion !== "success") throw new Error("synchro-echec");
+        panneau.maj("Chargement de tes nouvelles données", 1);
         cache.clear();
         donnees = await chargerDonnees();
         afficher(routeActuelle());
-        toast("Données à jour.");
+        panneau.maj("Tes données sont à jour", 1, "Synchro terminée");
+        panneau.etat("ok");
+        panneau.fermer(2500);
         return;
       }
+      const jobs = await (await github(`actions/runs/${run.id}/jobs`)).json();
+      const etapes = (jobs.jobs && jobs.jobs[0] && jobs.jobs[0].steps) || [];
+      if (!etapes.length) { panneau.maj("En attente d'un serveur GitHub", null); continue; }
+      const finies = etapes.filter((e) => e.status === "completed").length;
+      const courante = etapes.find((e) => e.status === "in_progress") || etapes.find((e) => e.status !== "completed");
+      panneau.maj(courante ? nomEtape(courante.name) : "Finalisation", finies / etapes.length);
     }
     throw new Error("synchro-longue");
   } catch (e) {
     const messages = {
       jeton: "Le jeton GitHub n'est plus valide. Remplace-le dans les réglages.",
       acces: "Le jeton n'a pas le droit de lancer la synchro (permission Actions en écriture).",
-      "synchro-echec": "La synchro a échoué. Détail dans l'onglet Actions du dépôt Coach-Perso.",
+      "synchro-echec": "La synchro a échoué. Le détail est dans l'onglet Actions du dépôt Coach-Perso.",
       "synchro-longue": "La synchro est toujours en cours. Rouvre l'appli dans quelques minutes.",
     };
-    toast(messages[e.message] || "Synchro impossible : connexion indisponible.");
+    panneau.maj(messages[e.message] || "Synchro impossible : connexion indisponible.", 1, "Synchro interrompue");
+    panneau.etat("erreur");
+    panneau.fermer(6000);
+  } finally {
+    clearInterval(chrono);
+    synchroEnCours = false;
     bouton.classList.remove("en-cours");
     bouton.querySelector("span").textContent = ilYa(donnees && donnees.derniere_synchro);
   }

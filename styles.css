@@ -242,6 +242,29 @@ a { color: inherit; text-decoration: none; }
 .erreur { color: var(--rouge); font-size: 14px; }
 .lien-discret { color: var(--texte-3); font-size: 13px; text-decoration: underline; margin-top: 28px; display: inline-block; }
 
+/* ---------------------------------------------------------- progression de la synchro */
+.panneau-synchro {
+  position: fixed; z-index: 20; left: 12px; right: 12px;
+  top: calc(env(safe-area-inset-top) + 8px);
+  max-width: 536px; margin: 0 auto;
+  background: rgba(31, 31, 36, 0.94);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  border: 1px solid var(--trait); border-radius: 18px; padding: 12px 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.ps-ligne { display: flex; justify-content: space-between; align-items: baseline; }
+.ps-titre { font-size: 15px; }
+.ps-temps { font-family: var(--chiffres); font-size: 13px; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.ps-etape { font-size: 14px; color: var(--texte-2); margin: 2px 0 10px; }
+.ps-barre { height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; }
+.ps-plein { display: block; height: 100%; width: 4%; border-radius: 3px; background: #0a84ff; transition: width 0.6s ease; }
+.ps-plein.indetermine { width: 30% !important; animation: va-et-vient 1.4s ease-in-out infinite; }
+@keyframes va-et-vient { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .ps-plein.indetermine { animation: none; } }
+.panneau-synchro.ok .ps-plein { background: var(--vert); }
+.panneau-synchro.erreur .ps-plein { background: var(--rouge); width: 100% !important; }
+.panneau-synchro.erreur .ps-etape { color: var(--texte); }
+
 /* ---------------------------------------------------------- navigation */
 .onglets {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
