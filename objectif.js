@@ -42,43 +42,48 @@ async function vueObjectif() {
 
 /* ------------------------------------------------------------------ defis et trophees */
 
-const COULEUR_COMPETENCE = { force: "#bf5af2", endurance: "#0a84ff", seuil: "#ff9f0a", vma: "#ff453a",
-  economie: "#5ac8fa", fatigue: "#30d158", discipline: "#ffd60a" };
+const COULEUR_FAMILLE = { assiduite: "#0a84ff", force: "#bf5af2", endurance: "#30d158", vitesse: "#ff453a",
+  economie: "#5ac8fa", parfaite: "#ffd60a" };
 
 function blocDefis(d) {
-  if (!d || !(d.actifs || []).length && !(d.trophees || []).length) return [];
+  if (!d || !d.semaine) return [];
   const frag = [];
-  if ((d.actifs || []).length) {
-    frag.push(el("div", { class: "semaine-tete" }, el("h2", {}, "Tes défis"), el("span", {}, "fixés par le coach")));
-    frag.push(el("ul", { class: "defis" }, d.actifs.map((x) => {
-      const couleur = COULEUR_COMPETENCE[x.competence] || "#0a84ff";
-      return el("li", { class: "defi", style: `--defi:${couleur}` },
-        el("button", { class: "defi-tete", "aria-expanded": "false", onclick: (e) => {
-          const ouvert = e.currentTarget.parentElement.classList.toggle("ouvert");
-          e.currentTarget.setAttribute("aria-expanded", String(ouvert));
-        } },
-          el("span", { class: "defi-titre" }, x.titre),
-          el("span", { class: "defi-delai" }, x.jours_restants > 0 ? `${x.jours_restants} j` : "dernier jour")),
-        el("div", { class: "jauge defi-jauge", role: "progressbar", "aria-valuenow": String(x.progression || 0), "aria-valuemin": "0", "aria-valuemax": "100" },
-          el("span", { style: `width:${Math.max(2, x.progression || 0)}%;background:${couleur}` })),
-        el("p", { class: "defi-ou" }, [
-          x.depart_texte ? `Départ ${x.depart_texte}` : null,
-          x.unite === "semaines" ? null : x.valeur_texte ? `meilleur depuis : ${x.valeur_texte}` : "aucune séance depuis",
-          x.unite === "semaines" ? `${x.valeur || 0} semaine${(x.valeur || 0) > 1 ? "s" : ""} validée${(x.valeur || 0) > 1 ? "s" : ""} sur ${x.cible}` : null,
-        ].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase())),
-        el("p", { class: "defi-description" }, x.description, el("span", { class: "defi-echeance" }, ` À valider avant le ${x.echeance_texte}.`)));
-    })));
-    frag.push(el("p", { class: "note" }, "Validés automatiquement par ta montre. Un défi réussi devient un trophée et le coach en fixe un nouveau."));
+  const s = d.semaine;
+  const reste = s.jours_restants > 1 ? `encore ${s.jours_restants} jours` : s.jours_restants === 1 ? "dernier jour demain" : "dernier jour";
+  frag.push(el("section", { class: "carte semaine-defis" },
+    el("div", { class: "sd-tete" },
+      el("div", {},
+        el("h2", { class: "sans-marge" }, "Défis de la semaine"),
+        el("p", { class: "sd-dates" }, `${s.texte}, ${reste}`)),
+      el("p", { class: "sd-compte" }, el("b", {}, `${d.reussis_semaine}`), `/${(d.actifs || []).length}`)),
+    el("ul", { class: "defis" }, (d.actifs || []).map(carteDefi)),
+    el("p", { class: "note" }, "Fixés lundi par le coach à partir de ton plan, validés uniquement par ta montre. Trois sur trois : semaine parfaite.")));
+
+  // serie et historique
+  const histo = (d.historique || []).slice().reverse();
+  if (histo.length || d.serie) {
+    frag.push(el("section", { class: "carte serie" },
+      el("div", { class: "serie-tete" },
+        el("span", { class: "serie-chiffre" }, String(d.serie || 0)),
+        el("span", { class: "serie-texte" },
+          el("b", {}, d.serie > 1 ? "semaines parfaites d'affilée" : d.serie === 1 ? "semaine parfaite" : "Pas de série en cours"),
+          el("span", {}, d.meilleure_serie ? `Record : ${d.meilleure_serie}` : "Boucle tes trois défis pour lancer ta série."))),
+      histo.length ? el("ol", { class: "semaines-passees", "aria-label": "Semaines précédentes" }, histo.map((h) =>
+        el("li", { class: h.parfaite ? "parfaite" : "", title: `Semaine du ${h.texte} : ${h.reussis} sur ${h.total}` },
+          el("span", { class: "points-semaine", "aria-hidden": "true" },
+            [...Array(h.total)].map((_, i) => el("i", { class: i < h.reussis ? "plein" : "" }))),
+          el("span", { class: "semaine-date" }, `${Number(h.lundi.slice(8))}/${h.lundi.slice(5, 7)}`)))) : null));
   }
+
   const trophees = d.trophees || [];
   frag.push(el("div", { class: "semaine-tete" }, el("h2", {}, "Trophées"), el("span", {}, trophees.length ? `${trophees.length}` : "")));
   if (!trophees.length) {
-    frag.push(el("p", { class: "note sans-marge" }, "Ton premier trophée arrivera avec ton premier défi réussi."));
+    frag.push(el("p", { class: "note sans-marge" }, "Chaque défi réussi devient un trophée, daté et relié à la séance qui l'a validé."));
   } else {
     frag.push(el("ul", { class: "trophees" }, trophees.slice(0, 24).map((t) => {
       const nouveau = (d.nouveaux || []).includes(t.id);
       const contenu = [
-        el("span", { class: "medaille", style: `--defi:${COULEUR_COMPETENCE[t.competence] || "#ffd60a"}`, "aria-hidden": "true" },
+        el("span", { class: `medaille${t.type === "parfaite" ? " or" : ""}`, style: `--defi:${COULEUR_FAMILLE[t.famille] || "#ffd60a"}`, "aria-hidden": "true" },
           svg('<path d="M8 2h8l-2 6h-4z" fill="currentColor" opacity=".55"/><circle cx="12" cy="15" r="6.5" fill="currentColor"/><path d="M12 11.6l1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" fill="#000" opacity=".45"/>', { viewBox: "0 0 24 24" })),
         el("span", { class: "trophee-titre" }, t.titre),
         el("span", { class: "trophee-meta" }, [t.resultat, t.date_texte].filter(Boolean).join(", ")),
@@ -88,6 +93,23 @@ function blocDefis(d) {
     })));
   }
   return frag;
+}
+
+function carteDefi(x) {
+  const couleur = COULEUR_FAMILLE[x.famille] || "#0a84ff";
+  const reussi = x.statut === "reussi";
+  return el("li", { class: `defi${reussi ? " reussi" : ""}`, style: `--defi:${couleur}` },
+    el("button", { class: "defi-tete", "aria-expanded": "false", onclick: (e) => {
+      const ouvert = e.currentTarget.parentElement.classList.toggle("ouvert");
+      e.currentTarget.setAttribute("aria-expanded", String(ouvert));
+    } },
+      el("span", { class: "defi-coche", "aria-hidden": "true" }, reussi ? "✓" : ""),
+      el("span", { class: "defi-titre" }, x.titre),
+      el("span", { class: "defi-valeur" }, reussi ? "Réussi" : x.valeur_texte || "–")),
+    el("div", { class: "jauge defi-jauge", role: "progressbar", "aria-label": x.titre, "aria-valuenow": String(x.progression || 0), "aria-valuemin": "0", "aria-valuemax": "100" },
+      el("span", { style: `width:${Math.max(2, x.progression || 0)}%;background:${couleur}` })),
+    el("p", { class: "defi-description" }, x.description,
+      reussi && x.valeur_texte ? el("span", { class: "defi-echeance" }, ` Ton résultat : ${x.valeur_texte}.`) : null));
 }
 
 /* ------------------------------------------------------------------ mode progression */
