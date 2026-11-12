@@ -97,9 +97,26 @@ async function github(chemin, options = {}) {
   return r;
 }
 
+/** Fichiers du depot prive deja charges pendant cette session (vides apres une synchro). */
+const cache = new Map();
+
+/** Lit un fichier JSON du depot prive ; renvoie null s'il n'existe pas encore. */
+async function charger(chemin, { frais = false } = {}) {
+  if (!frais && cache.has(chemin)) return cache.get(chemin);
+  let r;
+  try {
+    r = await github(`contents/${chemin}?t=${Date.now()}`, { accept: "application/vnd.github.raw+json", cache: "no-store" });
+  } catch (e) {
+    if (e.message === "acces" && chemin !== FICHIER_JOUR) { cache.set(chemin, null); return null; }
+    throw e;
+  }
+  const json = await r.json();
+  cache.set(chemin, json);
+  return json;
+}
+
 async function chargerDonnees() {
-  const r = await github(`contents/${FICHIER_JOUR}?t=${Date.now()}`, { accept: "application/vnd.github.raw+json", cache: "no-store" });
-  return r.json();
+  return charger(FICHIER_JOUR, { frais: true });
 }
 
 async function lancerSynchro(bouton) {
@@ -115,8 +132,9 @@ async function lancerSynchro(bouton) {
       const run = runs.workflow_runs && runs.workflow_runs[0];
       if (run && run.status === "completed") {
         if (run.conclusion !== "success") throw new Error("synchro-echec");
+        cache.clear();
         donnees = await chargerDonnees();
-        afficher("aujourdhui");
+        afficher(routeActuelle());
         toast("Données à jour.");
         return;
       }
@@ -329,7 +347,7 @@ function vueAujourdhui() {
   const a = d.derniere_activite;
   if (a) {
     frag.push(el("h2", {}, "Dernière sortie"));
-    frag.push(el("section", { class: "carte" },
+    frag.push(el("a", { class: "carte carte-lien", href: `#/seance/${a.id}` },
       el("p", { class: "sortie-nom" }, a.nom || "Activité"),
       el("p", { class: "sortie-date" }, majuscule(fmtCourt.format(new Date(a.date)))),
       el("div", { class: "stats" },
@@ -339,7 +357,7 @@ function vueAujourdhui() {
         stat("FC moy.", a.fc_moy ? `${Math.round(a.fc_moy)}` : "–"),
         stat("Charge", a.charge ? `${Math.round(a.charge)}` : "–"),
         stat("Effet", effet(a.effet))),
-      el("p", { class: "debrief-attente" }, "Le débrief du coach apparaîtra ici dans une prochaine version.")));
+      el("p", { class: "debrief-attente" }, "Voir le détail de la séance")));
   }
 
   frag.push(el("button", { class: "lien-discret", onclick: oublierJeton }, "Réglages : changer de jeton GitHub"));
@@ -390,25 +408,57 @@ function oublierJeton() {
 
 const VUES = {
   aujourdhui: () => vueAujourdhui(),
-  diagnostic: () => vueEnConstruction("Diagnostic", "Les analyses détaillées de récupération, de charge et de qualité de course arrivent dans la prochaine version."),
-  plan: () => vueEnConstruction("Plan", "Le plan d'entraînement, recalculé à chaque synchro, arrive après le coach."),
+  diagnostic: (p) => vueDiagnostic(p[0] || "seances"),
+  seance: (p) => vueSeance(p[0]),
+  plan: () => vueEnConstruction("Plan", "Le plan d'entraînement, recalculé à chaque synchro, arrive bientôt."),
   objectif: () => vueEnConstruction("Objectif", "Crée un objectif de course, ou laisse le coach te faire progresser sans plafond. Bientôt disponible."),
 };
+const ONGLET_DE = { seance: "diagnostic" };
 
-function afficher(vue, erreur) {
-  ecran.replaceChildren(...(vue === "configuration" ? vueConfiguration(erreur) : VUES[vue]()));
-  const configuration = vue === "configuration";
+function routeActuelle() {
+  const morceaux = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  return VUES[morceaux[0]] ? morceaux : ["aujourdhui"];
+}
+
+let rendu = 0;
+async function afficher(route, erreur) {
+  const numero = ++rendu;
+  const configuration = route === "configuration";
   document.querySelector(".onglets").hidden = configuration;
   document.getElementById("bulle-coach").hidden = configuration;
+  if (configuration) {
+    ecran.replaceChildren(...vueConfiguration(erreur));
+    return;
+  }
+  const [nom, ...params] = route;
+  const onglet = ONGLET_DE[nom] || nom;
   document.querySelectorAll(".onglet").forEach((o) => {
-    const actif = o.dataset.vue === vue;
+    const actif = o.dataset.vue === onglet;
     o.classList.toggle("actif", actif);
     actif ? o.setAttribute("aria-current", "page") : o.removeAttribute("aria-current");
   });
+  let contenu;
+  try {
+    contenu = await VUES[nom](params);
+  } catch (e) {
+    if (e.message === "jeton") return afficher("configuration", "Ce jeton n'est plus valide. Colle un nouveau jeton.");
+    contenu = [el("div", { class: "entete" }), el("h1", {}, "Chargement impossible"),
+      el("p", { class: "note" }, "Ces données n'ont pas pu être chargées. Vérifie ta connexion et réessaie."),
+      el("button", { class: "bouton discret", onclick: () => afficher(routeActuelle()) }, "Réessayer")];
+  }
+  if (numero !== rendu) return; // une autre page a ete demandee entre-temps
+  ecran.replaceChildren(...[contenu].flat());
   window.scrollTo(0, 0);
 }
 
-document.querySelectorAll(".onglet").forEach((o) => o.addEventListener("click", () => donnees && afficher(o.dataset.vue)));
+function aller(...route) {
+  const adresse = "#/" + route.join("/");
+  if (location.hash === adresse) afficher(route);
+  else location.hash = adresse;
+}
+
+window.addEventListener("hashchange", () => donnees && afficher(routeActuelle()));
+document.querySelectorAll(".onglet").forEach((o) => o.addEventListener("click", () => donnees && aller(o.dataset.vue)));
 document.getElementById("bulle-coach").addEventListener("click", () => toast("Le coach arrive dans une prochaine version."));
 
 async function demarrer() {
@@ -416,7 +466,7 @@ async function demarrer() {
   ecran.replaceChildren(el("p", { class: "note panneau" }, "Chargement de tes données…"));
   try {
     donnees = await chargerDonnees();
-    afficher("aujourdhui");
+    afficher(routeActuelle());
   } catch (e) {
     if (e.message === "jeton") { ecrireJeton(""); return afficher("configuration", "Ce jeton n'est pas valide. Vérifie-le et recommence."); }
     if (e.message === "acces") { ecrireJeton(""); return afficher("configuration", "Ce jeton n'a pas accès au dépôt Coach-Perso, ou le diagnostic n'a pas encore été généré."); }
@@ -428,4 +478,3 @@ async function demarrer() {
 }
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-demarrer();
